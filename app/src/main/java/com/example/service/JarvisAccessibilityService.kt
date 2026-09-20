@@ -29,8 +29,39 @@ class JarvisAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Jarvis Accessibility Screen Control Service connected")
     }
 
+    private var lastA11yMessageKey = ""
+    private var lastA11yMessageTime = 0L
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Active event stream monitored for screen responsiveness
+        if (event == null) return
+
+        // If NotificationListenerService is not connected, use Accessibility notification event fallback
+        if (event.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED &&
+            !JarvisNotificationListenerService.isConnected
+        ) {
+            val pkg = event.packageName?.toString() ?: ""
+            if (pkg == "com.whatsapp" || pkg == "com.whatsapp.w4b") {
+                val textList = event.text
+                if (!textList.isNullOrEmpty()) {
+                    val combined = textList.joinToString(" ").trim()
+                    val lower = combined.lowercase()
+                    if (combined.isNotBlank() &&
+                        !lower.contains("checking for new messages") &&
+                        !lower.contains("backup in progress") &&
+                        !lower.contains("whatsapp web")
+                    ) {
+                        val now = System.currentTimeMillis()
+                        if (combined != lastA11yMessageKey || (now - lastA11yMessageTime) > 4000L) {
+                            lastA11yMessageKey = combined
+                            lastA11yMessageTime = now
+                            val announcement = "WhatsApp par message aaya hai: $combined"
+                            JarvisBackgroundService.instance?.speakAnnouncement(announcement)
+                                ?: com.example.MainActivity.instance?.speakFromUI(announcement)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     override fun onInterrupt() {

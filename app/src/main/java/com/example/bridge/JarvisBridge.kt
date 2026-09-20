@@ -23,8 +23,37 @@ class JarvisBridge(
     private val onMuteToggle: (() -> Unit)? = null,
     private val isMutedProvider: (() -> Boolean)? = null,
     private val onSendCommand: ((String) -> Unit)? = null,
-    private val onClearChat: (() -> Unit)? = null
+    private val onClearChat: (() -> Unit)? = null,
+    private val onTestVoice: (() -> Unit)? = null,
+    private val onOpenNotificationSettings: (() -> Unit)? = null,
+    private val checkNotificationListenerActive: (() -> Boolean)? = null,
+    private val onTestWhatsApp: (() -> Unit)? = null
 ) {
+    @JavascriptInterface
+    fun openNotificationSettings() {
+        onOpenNotificationSettings?.invoke()
+    }
+
+    @JavascriptInterface
+    fun isNotificationListenerActive(): Boolean {
+        return checkNotificationListenerActive?.invoke() ?: false
+    }
+
+    @JavascriptInterface
+    fun testWhatsAppMessage() {
+        onTestWhatsApp?.invoke()
+    }
+
+    @JavascriptInterface
+    fun testVoice() {
+        onTestVoice?.invoke()
+    }
+
+    @JavascriptInterface
+    fun toggleMute() {
+        onMuteToggle?.invoke()
+    }
+
     @JavascriptInterface
     fun onOrbClicked() {
         onOrb()

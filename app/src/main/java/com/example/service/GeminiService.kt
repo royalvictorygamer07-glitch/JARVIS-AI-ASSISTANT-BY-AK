@@ -41,8 +41,17 @@ class GeminiService(
         val isHindi = containsHindiOrHinglish(lower)
 
         // =========================================================================
-        // 1. MICROPHONE CONTROL (Instant Action)
+        // 1. VOICE CHECK & MICROPHONE CONTROL (Instant Action)
         // =========================================================================
+        if (isVoiceCheckCommand(lower)) {
+            prefs.isMicMuted = false
+            onMuteToggled?.invoke(false)
+            return@withContext if (isHindi) {
+                "Main bilkul bol raha hoon. Mere audio aur voice systems 100% active hain. Aap koi bhi command dein, main execute karunga aur bol kar bataunga."
+            } else {
+                "I am speaking clearly. All audio, speech, and device execution systems are 100% active. Give any command, and I will execute it."
+            }
+        }
         if (isMuteCommand(lower)) {
             prefs.isMicMuted = true
             onMuteToggled?.invoke(true)
@@ -59,6 +68,52 @@ class GeminiService(
                 "Microphone unmute ho gaya hai. Main aapki commands sun raha hoon."
             } else {
                 "Microphone unmuted. Standing by for instructions."
+            }
+        }
+
+        // =========================================================================
+        // 1B. BACKGROUND SERVICE CONTROL & WAKE WORD ("Jarvis off d background", "Hey Jarvis on")
+        // =========================================================================
+        if (isBackgroundOffCommand(lower)) {
+            JarvisBackgroundService.instance?.setStandbyMode(true)
+            prefs.isStandbyMode = true
+            return@withContext if (isHindi) {
+                "Jarvis background service off kar di gayi hai, Sir. Main standby mode me hoon. Jab bhi zaroorat ho, bas 'Hey Jarvis' bolein."
+            } else {
+                "Jarvis background service deactivated, Sir. I am in standby mode. Just say 'Hey Jarvis' whenever you need me."
+            }
+        }
+        if (isWakeUpCommand(lower)) {
+            JarvisBackgroundService.instance?.setStandbyMode(false)
+            prefs.isStandbyMode = false
+            prefs.isPowerOnline = true
+            prefs.isMicMuted = false
+            return@withContext if (isHindi) {
+                "Ji Sir, Jarvis active aur ready hai! Boliye, main aapki kya madad karoon?"
+            } else {
+                "Yes Sir! Jarvis is fully online and ready. How can I help you?"
+            }
+        }
+
+        // =========================================================================
+        // 1C. WHATSAPP MESSAGE READER CONFIGURATION & STATUS
+        // =========================================================================
+        if (isWhatsAppReaderCommand(lower)) {
+            val hasPerm = JarvisNotificationListenerService.isPermissionGranted(context)
+            if (!hasPerm) {
+                JarvisNotificationListenerService.openSettings(context)
+                return@withContext if (isHindi) {
+                    "WhatsApp messages padhne ke liye Notification Access settings khol di gayi hain. Kripya Jarvis ko allow karein."
+                } else {
+                    "Opening Notification Access settings so Jarvis can read your WhatsApp messages aloud."
+                }
+            } else {
+                prefs.isWhatsAppReaderEnabled = true
+                return@withContext if (isHindi) {
+                    "WhatsApp reader 100% active hai. Jaise hi koi WhatsApp message aayega, main use bol kar bataunga."
+                } else {
+                    "WhatsApp reader is fully active. Incoming messages will be announced aloud automatically."
+                }
             }
         }
 
@@ -315,6 +370,32 @@ class GeminiService(
         // 25. AUTONOMOUS COGNITIVE MIND DECISION MATRIX (Rich Hindi + English)
         // =========================================================================
         return@withContext decideCognitiveResponse(cleanQuery, lower, isHindi)
+    }
+
+    private fun isBackgroundOffCommand(lower: String): Boolean {
+        return lower.contains("off d background") || lower.contains("off the background") ||
+                lower.contains("off background") || lower.contains("background off") ||
+                lower.contains("turn off background") || lower.contains("background band") ||
+                lower.contains("background service off") || lower.contains("background band karo") ||
+                lower.contains("background me mat raho") || lower == "jarvis off" ||
+                lower.contains("jarvis so jao") || lower.contains("sleep mode") ||
+                lower.contains("jarvis sleep")
+    }
+
+    private fun isWakeUpCommand(lower: String): Boolean {
+        return lower == "hey jarvis" || lower == "he jarvis" || lower == "hi jarvis" ||
+                lower == "hello jarvis" || lower == "jarvis on" || lower == "hey jarvis on" ||
+                lower == "wake up jarvis" || lower == "jarvis wake up" || lower == "jarvis utho" ||
+                lower == "jarvis chalu ho jao" || lower == "jarvis start" || lower == "jarvis online" ||
+                lower == "suno jarvis" || lower == "jarvis suno" || lower == "ok jarvis" ||
+                lower == "jarvis"
+    }
+
+    private fun isWhatsAppReaderCommand(lower: String): Boolean {
+        return lower.contains("whatsapp message padho") || lower.contains("whatsapp padho") ||
+                lower.contains("kya message kiya") || lower.contains("kya message aaya") ||
+                lower.contains("read whatsapp") || lower.contains("whatsapp reader") ||
+                lower.contains("whatsapp message padh") || lower.contains("message padh ke")
     }
 
     private fun isMuteCommand(lower: String): Boolean {
@@ -883,13 +964,30 @@ class GeminiService(
             }
 
             else -> {
-                // If it looks like a request to open or do something:
+                val clean = query.trim()
+                // 1. Try launching as an installed app
+                val appLaunch = appManager.findAndLaunchApp(clean, isHindi)
+                if (appLaunch.success) {
+                    return appLaunch.message
+                }
+
+                // 2. Perform instant Google Search
+                systemControl.searchGoogle(clean)
                 if (isHindi) {
-                    "Main aapka command samajh gaya hoon. Batayein, ise turant execute karoon?"
+                    "Maine Google par '${clean}' search kar diya hai."
                 } else {
-                    "Understood. Standing by to execute your directive."
+                    "Searched for '${clean}' on Google."
                 }
             }
         }
+    }
+
+    private fun isVoiceCheckCommand(lower: String): Boolean {
+        return lower.contains("bol nahi raha") || lower.contains("bol nahin raha") ||
+                lower.contains("bolte kyu nahi") || lower.contains("bolti kyu nahi") ||
+                lower.contains("kuch bolo") || lower.contains("kuch to bolo") ||
+                lower.contains("awaaz nahi") || lower.contains("awaz nahi") ||
+                lower.contains("speak something") || lower.contains("voice test") ||
+                lower == "speak" || lower == "bolo" || lower == "test voice"
     }
 }

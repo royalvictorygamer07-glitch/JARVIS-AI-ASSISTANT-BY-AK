@@ -251,8 +251,10 @@ class JarvisBackgroundService : Service() {
 
         val isMuted = prefs.isMicMuted
         val isOnline = prefs.isPowerOnline
+        val isStandby = prefs.isStandbyMode
 
         val statusText = when {
+            isStandby -> "Jarvis in Standby • Say 'Hey Jarvis' to wake up"
             !isOnline -> "Standby Mode"
             isMuted -> "Microphone Muted • Tap to Unmute"
             else -> "Continuous Listening Active • Ready for commands"
@@ -355,9 +357,80 @@ class JarvisBackgroundService : Service() {
         }
     }
 
+    fun setStandbyMode(standby: Boolean) {
+        prefs.isStandbyMode = standby
+        if (!standby) {
+            prefs.isPowerOnline = true
+            prefs.isMicMuted = false
+            uiListener?.onPowerChanged(true)
+            uiListener?.onMicMutedChanged(false)
+        }
+        updateNotification()
+        if (hasAudioPermission()) {
+            voiceHelper.startContinuousListening()
+        }
+    }
+
+    fun speakAnnouncement(text: String) {
+        if (text.isBlank()) return
+        val timeNow = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+        uiListener?.onJarvisResponse(text, timeNow)
+        ttsService.speak(text)
+    }
+
+    private fun isWakeWordMatch(lower: String): Boolean {
+        return lower == "hey jarvis" || lower == "he jarvis" || lower == "hi jarvis" ||
+                lower == "hello jarvis" || lower == "jarvis on" || lower == "hey jarvis on" ||
+                lower == "wake up jarvis" || lower == "jarvis wake up" || lower == "jarvis utho" ||
+                lower == "jarvis chalu ho jao" || lower == "jarvis online" || lower == "suno jarvis" ||
+                lower == "jarvis suno" || lower == "ok jarvis" || lower == "jarvis"
+    }
+
+    private fun isBackgroundOffMatch(lower: String): Boolean {
+        return lower.contains("off d background") || lower.contains("off the background") ||
+                lower.contains("off background") || lower.contains("background off") ||
+                lower.contains("turn off background") || lower.contains("background band") ||
+                lower.contains("background me mat raho") || lower == "jarvis off" ||
+                lower.contains("jarvis so jao") || lower.contains("sleep mode") ||
+                lower.contains("jarvis sleep")
+    }
+
     fun processUserQuery(query: String) {
         if (query.isBlank()) return
+        val lower = query.trim().lowercase(Locale.ROOT)
         val timeNow = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+
+        // 1. Check if user requests to turn OFF the background
+        if (isBackgroundOffMatch(lower)) {
+            setStandbyMode(true)
+            val confirm = "Jarvis background service off kar di gayi hai, Sir. Main standby mode me hoon. Jab bhi zaroorat ho, bas 'Hey Jarvis' bolein."
+            uiListener?.onUserQuery(query, timeNow)
+            uiListener?.onJarvisResponse(confirm, timeNow)
+            ttsService.speak(confirm)
+            return
+        }
+
+        // 2. Check for Wake Word ("Hey Jarvis", "Jarvis on")
+        if (isWakeWordMatch(lower)) {
+            val wasInStandby = prefs.isStandbyMode
+            setStandbyMode(false)
+            val reply = if (wasInStandby) {
+                "Ji Sir, Jarvis active aur ready hai! Boliye, main aapki kya madad karoon?"
+            } else {
+                "Yes Sir, I am listening. What is your command?"
+            }
+            uiListener?.onUserQuery(query, timeNow)
+            uiListener?.onJarvisResponse(reply, timeNow)
+            ttsService.speak(reply)
+            return
+        }
+
+        // 3. If in standby mode and no wake word detected, stay quiescent
+        if (prefs.isStandbyMode) {
+            Log.d(TAG, "Quiescent standby mode: ignoring non-wake query: '$query'")
+            voiceHelper.resumeAfterSpeech()
+            return
+        }
 
         uiListener?.onUserQuery(query, timeNow)
         uiListener?.onOrbStateChanged("thinking", 0.6f)
@@ -377,7 +450,7 @@ class JarvisBackgroundService : Service() {
             withContext(Dispatchers.Main) {
                 uiListener?.onJarvisResponse(response, timeNow)
 
-                if (!prefs.isMicMuted && prefs.isPowerOnline && response.isNotBlank()) {
+                if (prefs.isPowerOnline && response.isNotBlank()) {
                     ttsService.speak(response)
                 } else {
                     uiListener?.onOrbStateChanged("idle", 0.0f)

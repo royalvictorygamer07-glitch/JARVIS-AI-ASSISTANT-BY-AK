@@ -1,6 +1,9 @@
 package com.example.service
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
@@ -8,6 +11,7 @@ import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import android.util.Log
 import java.util.Locale
+import java.util.concurrent.ConcurrentLinkedQueue
 
 class TtsService(
     private val context: Context,
@@ -22,9 +26,13 @@ class TtsService(
     @Volatile
     private var isInitialized = false
     private var currentProfile: String = "Puck"
-    private var pendingSpeech: String? = null
+    private val speechQueue = ConcurrentLinkedQueue<String>()
 
     init {
+        initEngine()
+    }
+
+    private fun initEngine() {
         try {
             tts = TextToSpeech(context.applicationContext, this)
         } catch (e: Exception) {
@@ -63,21 +71,50 @@ class TtsService(
 
                     override fun onDone(utteranceId: String?) {
                         onStateChanged(false)
+                        processNextQueuedSpeech()
                     }
 
                     override fun onError(utteranceId: String?) {
                         onStateChanged(false)
+                        processNextQueuedSpeech()
                     }
                 })
 
-                pendingSpeech?.let { text ->
-                    pendingSpeech = null
-                    speak(text)
-                }
+                processNextQueuedSpeech()
             }
         } else {
             Log.e(TAG, "TextToSpeech onInit failed with status $status")
+            // Attempt fallback initialization once
+            try {
+                tts = TextToSpeech(context, this)
+            } catch (_: Exception) {}
         }
+    }
+
+    private fun processNextQueuedSpeech() {
+        val next = speechQueue.poll() ?: return
+        speak(next)
+    }
+
+    private fun ensureAudibleVolume() {
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            val current = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+            if (current == 0 || (current.toFloat() / max.toFloat()) < 0.35f) {
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, (max * 0.75f).toInt().coerceAtLeast(1), 0)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val playbackAttrs = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+                val focusReq = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(playbackAttrs)
+                    .build()
+                am.requestAudioFocus(focusReq)
+            }
+        } catch (_: Exception) {}
     }
 
     /**
@@ -181,8 +218,11 @@ class TtsService(
             return
         }
 
+        ensureAudibleVolume()
+
         if (!isInitialized || tts == null) {
-            pendingSpeech = cleaned
+            speechQueue.offer(cleaned)
+            initEngine()
             return
         }
 
@@ -195,8 +235,6 @@ class TtsService(
                     engine.language = hiLocale
                 }
             } else {
-                // For English and Roman Hinglish ("Alarm set kar diya gaya hai"):
-                // Use Indian English or default locale so Roman words are pronounced naturally without spelling out
                 val enInLocale = Locale("en", "IN")
                 if (engine.isLanguageAvailable(enInLocale) >= TextToSpeech.LANG_AVAILABLE) {
                     engine.language = enInLocale
@@ -212,11 +250,25 @@ class TtsService(
         val params = Bundle().apply {
             putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
         }
-        engine.speak(cleaned, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+
+        val result = engine.speak(cleaned, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+        if (result != TextToSpeech.SUCCESS) {
+            Log.w(TAG, "engine.speak failed code $result, retrying with default language and engine")
+            try {
+                engine.language = Locale.getDefault()
+                engine.speak(cleaned, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+            } catch (retryEx: Exception) {
+                Log.e(TAG, "Retry speak error: ${retryEx.message}")
+            }
+        }
+    }
+
+    fun testVoice(message: String = "Jarvis audio output is 100% online and functional.") {
+        speak(message)
     }
 
     fun stop() {
-        pendingSpeech = null
+        speechQueue.clear()
         try {
             tts?.stop()
         } catch (_: Exception) {}
@@ -224,7 +276,7 @@ class TtsService(
     }
 
     fun shutdown() {
-        pendingSpeech = null
+        speechQueue.clear()
         try {
             tts?.stop()
             tts?.shutdown()

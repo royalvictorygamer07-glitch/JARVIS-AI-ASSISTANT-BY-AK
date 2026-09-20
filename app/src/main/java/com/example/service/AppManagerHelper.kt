@@ -118,35 +118,45 @@ class AppManagerHelper(private val context: Context) {
             cleanAppName(it.label).equals(cleanQuery, ignoreCase = true)
         }
 
-        // 2. Check alias mapping
-        if (matchedApp == null) {
-            val alias = getKnownPackageAlias(cleanQuery)
-            if (alias != null) {
-                matchedApp = apps.firstOrNull { it.packageName.equals(alias, ignoreCase = true) }
+        // 2. Check alias mapping and direct package launch
+        val alias = getKnownPackageAlias(cleanQuery)
+        if (matchedApp == null && alias != null) {
+            matchedApp = apps.firstOrNull { it.packageName.equals(alias, ignoreCase = true) }
+            if (matchedApp == null) {
+                val directResult = tryDirectPackageLaunchOrSpecial(alias, cleanQuery, isHindi)
+                if (directResult != null) return directResult
             }
         }
 
         // 3. Check contains / substring match
         if (matchedApp == null) {
             matchedApp = apps.firstOrNull {
-                cleanAppName(it.label).contains(cleanQuery) || cleanQuery.contains(cleanAppName(it.label))
+                val cl = cleanAppName(it.label)
+                cl.isNotEmpty() && (cl.contains(cleanQuery) || cleanQuery.contains(cl))
             }
         }
 
         // 4. Fuzzy similarity match
         if (matchedApp == null) {
             val queryWords = cleanQuery.split(" ").filter { it.length > 2 }
-            matchedApp = apps.maxByOrNull { app ->
-                val appWords = cleanAppName(app.label).split(" ")
-                queryWords.count { qw -> appWords.any { aw -> aw.contains(qw) || qw.contains(aw) } }
-            }?.takeIf { app ->
-                val appWords = cleanAppName(app.label).split(" ")
-                queryWords.any { qw -> appWords.any { aw -> aw.contains(qw) || qw.contains(aw) } }
+            if (queryWords.isNotEmpty()) {
+                matchedApp = apps.maxByOrNull { app ->
+                    val appWords = cleanAppName(app.label).split(" ")
+                    queryWords.count { qw -> appWords.any { aw -> aw.contains(qw) || qw.contains(aw) } }
+                }?.takeIf { app ->
+                    val appWords = cleanAppName(app.label).split(" ")
+                    queryWords.any { qw -> appWords.any { aw -> aw.contains(qw) || qw.contains(aw) } }
+                }
             }
         }
 
         if (matchedApp != null) {
             return launchPackageDirectly(matchedApp.packageName, matchedApp.label, isHindi)
+        }
+
+        if (alias != null) {
+            val directResult = tryDirectPackageLaunchOrSpecial(alias, cleanQuery, isHindi)
+            if (directResult != null) return directResult
         }
 
         // Check if accessible screen can click it
@@ -242,6 +252,44 @@ class AppManagerHelper(private val context: Context) {
         return null
     }
 
+    private fun tryDirectPackageLaunchOrSpecial(alias: String, query: String, isHindi: Boolean): AppLaunchResult? {
+        val launchIntent = packageManager.getLaunchIntentForPackage(alias)
+        if (launchIntent != null) {
+            return launchPackageDirectly(alias, query, isHindi)
+        }
+        // Web fallback for known giants
+        when {
+            alias.contains("youtube") -> {
+                return try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com")).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                    AppLaunchResult(true, "YouTube", alias, if (isHindi) "YouTube open kar diya hai." else "Opened YouTube.")
+                } catch (e: Exception) { null }
+            }
+            alias.contains("chrome") -> {
+                return try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                    AppLaunchResult(true, "Browser", alias, if (isHindi) "Browser open kar diya hai." else "Opened Browser.")
+                } catch (e: Exception) { null }
+            }
+            alias.contains("whatsapp") -> {
+                return try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com")).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                    AppLaunchResult(true, "WhatsApp", alias, if (isHindi) "WhatsApp open kar diya hai." else "Opened WhatsApp.")
+                } catch (e: Exception) { null }
+            }
+        }
+        return null
+    }
+
     private fun trySearchOnPlayStore(cleanQuery: String, isHindi: Boolean): AppLaunchResult {
         return try {
             val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=$cleanQuery")).apply {
@@ -275,19 +323,32 @@ class AppManagerHelper(private val context: Context) {
     }
 
     private fun cleanAppName(name: String): String {
-        return name.lowercase(Locale.ROOT)
-            .replace("open", "")
-            .replace("kholo", "")
-            .replace("chalao", "")
-            .replace("launch", "")
-            .replace("start", "")
-            .replace("app", "")
-            .replace("application", "")
-            .replace("karo", "")
-            .replace("ko", "")
-            .replace("please", "")
-            .replace("sir", "")
-            .trim()
+        var s = name.lowercase(Locale.ROOT).trim()
+        val prefixes = listOf(
+            "can you please open ", "can you open ", "please open ", "open ", "launch ", "start ", "run ",
+            "kripya open karein ", "open kar do ", "open karo ", "chala do ", "chalao ", "chalu karo ",
+            "chalu kar do ", "khol do ", "kholo ", "kholna hai "
+        )
+        for (p in prefixes) {
+            if (s.startsWith(p)) {
+                s = s.substring(p.length).trim()
+                break
+            }
+        }
+        val suffixes = listOf(
+            " open kar do", " open karo", " khol do", " kholo", " chala do", " chalao", " chalu karo",
+            " chalu kar do", " app open", " app kholo", " application open", " ko open karo",
+            " ko kholo", " chalu", " laga do", " chalao please", " open", " please", " sir", " bhai",
+            " kar do", " karo", " karna hai", " kholna"
+        )
+        for (sfx in suffixes) {
+            if (s.endsWith(sfx)) {
+                s = s.removeSuffix(sfx).trim()
+                break
+            }
+        }
+        s = s.replace(Regex("\\b(app|application|please|sir|bhai|mera|meri|mujhe|ko|ek)\\b"), " ")
+        return s.replace(Regex("\\s+"), " ").trim()
     }
 
     private fun getKnownPackageAlias(query: String): String? {

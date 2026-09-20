@@ -37,6 +37,7 @@ import com.example.service.GeminiService
 import com.example.service.JarvisAccessibilityService
 import com.example.service.JarvisBackgroundService
 import com.example.service.JarvisMindEngine
+import com.example.service.JarvisNotificationListenerService
 import com.example.service.JarvisServiceListener
 import com.example.service.TtsService
 import com.example.service.VoiceRecognitionHelper
@@ -50,6 +51,12 @@ import java.util.Date
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        @Volatile
+        var instance: MainActivity? = null
+            private set
+    }
 
     private lateinit var webView: WebView
     private lateinit var prefs: JarvisPreferences
@@ -166,11 +173,20 @@ class MainActivity : ComponentActivity() {
             if (brokenIndex.exists() && brokenIndex.isDirectory) {
                 brokenIndex.deleteRecursively()
             }
+            val jsCache = java.io.File(cacheDir, "WebView/Default/HTTP Cache/Code Cache/js")
+            if (!jsCache.exists()) {
+                jsCache.mkdirs()
+            }
+            val wasmCache = java.io.File(cacheDir, "WebView/Default/HTTP Cache/Code Cache/wasm")
+            if (!wasmCache.exists()) {
+                wasmCache.mkdirs()
+            }
         } catch (_: Throwable) {}
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
+        instance = this
         cleanCorruptedCacheDirs()
         super.onCreate(savedInstanceState)
 
@@ -207,6 +223,9 @@ class MainActivity : ComponentActivity() {
             }
         }
         ttsService.applyVoiceProfile(prefs.voice)
+        // Ensure microphone starts unmuted and system online
+        prefs.isMicMuted = false
+        prefs.isPowerOnline = true
 
         mindEngine = JarvisMindEngine(
             context = this,
@@ -303,6 +322,11 @@ class MainActivity : ComponentActivity() {
                     currentUrl = url ?: ""
                     onWebPageLoaded(currentUrl)
                 }
+
+                override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+                    android.util.Log.w("MainActivity", "WebView render process exited, didCrash: ${detail?.didCrash()}")
+                    return true
+                }
             }
         }
 
@@ -363,7 +387,11 @@ class MainActivity : ComponentActivity() {
                 onMuteToggle = { runOnUiThread { handleMicOrMuteClick() } },
                 isMutedProvider = { prefs.isMicMuted },
                 onSendCommand = { cmd -> runOnUiThread { handleUserSpeechQuery(cmd) } },
-                onClearChat = { runOnUiThread { clearChatHistory() } }
+                onClearChat = { runOnUiThread { clearChatHistory() } },
+                onTestVoice = { runOnUiThread { testVoiceOutput() } },
+                onOpenNotificationSettings = { runOnUiThread { JarvisNotificationListenerService.openSettings(this@MainActivity) } },
+                checkNotificationListenerActive = { JarvisNotificationListenerService.isPermissionGranted(this@MainActivity) },
+                onTestWhatsApp = { runOnUiThread { testWhatsAppAnnouncement() } }
             ),
             "JarvisBridge"
         )
@@ -557,7 +585,45 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun toggleVoiceInput() {
-        handleMicOrMuteClick()
+        if (!prefs.isPowerOnline) {
+            togglePower()
+        }
+        if (prefs.isMicMuted) {
+            prefs.isMicMuted = false
+            JarvisBackgroundService.instance?.setMicMuted(false)
+            runJs("window.setMicMuted(false);")
+        }
+        if (!hasAudioPermission()) {
+            requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        ttsService.stop()
+        val service = JarvisBackgroundService.instance
+        if (service != null) {
+            service.voiceHelper.startContinuousListening()
+        } else {
+            if (voiceHelper.isRecognitionAvailable()) {
+                voiceHelper.startContinuousListening()
+            } else {
+                launchSpeechFallbackDialog()
+            }
+        }
+        runJs("window.setOrbState('listening', 0.6);")
+        Toast.makeText(this, "Listening... Speak your command", Toast.LENGTH_SHORT).show()
+    }
+
+    fun testVoiceOutput() {
+        ttsService.speak("Jarvis online. Audio and speech systems are 100 percent active.")
+        Toast.makeText(this, "Testing Jarvis Voice...", Toast.LENGTH_SHORT).show()
+    }
+
+    fun testWhatsAppAnnouncement() {
+        val testSender = "Rohit Sharma"
+        val testMessage = "Bhai kahan ho? Meeting kab shuru hogi?"
+        displayIncomingNotification("WhatsApp", testSender, testMessage)
+        val text = "WhatsApp par $testSender ne message kiya hai: $testMessage"
+        ttsService.speak(text)
+        Toast.makeText(this, "Simulating WhatsApp Message Notification", Toast.LENGTH_SHORT).show()
     }
 
     private fun togglePower() {
@@ -578,6 +644,23 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "Jarvis entering standby sleep mode.", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(this, "Jarvis online.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun speakFromUI(text: String) {
+        if (text.isBlank()) return
+        val timeNow = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+        runOnUiThread {
+            runJs("window.addChatMessage('jarvis', ${JSONObject.quote(text)}, '$timeNow');")
+            ttsService.speak(text)
+        }
+    }
+
+    fun displayIncomingNotification(source: String, sender: String, message: String) {
+        val timeNow = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+        val formatted = "[$source] $sender: $message"
+        runOnUiThread {
+            runJs("window.addChatMessage('jarvis', ${JSONObject.quote(formatted)}, '$timeNow');")
         }
     }
 
@@ -606,7 +689,7 @@ class MainActivity : ComponentActivity() {
 
             withContext(Dispatchers.Main) {
                 runJs("window.addChatMessage('jarvis', ${JSONObject.quote(response)}, '$timeNow');")
-                if (!prefs.isMicMuted && prefs.isPowerOnline) {
+                if (prefs.isPowerOnline && response.isNotBlank()) {
                     ttsService.speak(response)
                 } else {
                     runJs("window.setOrbState('idle', 0.0);")
@@ -922,6 +1005,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (instance == this) {
+            instance = null
+        }
         JarvisBackgroundService.instance?.setUiListener(null)
         ttsService.shutdown()
         voiceHelper.stopListening()

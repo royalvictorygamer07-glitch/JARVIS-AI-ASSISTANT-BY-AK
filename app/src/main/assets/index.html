@@ -1353,24 +1353,27 @@
 
   <!-- ============ QUICK ACTIONS CHIPS & COMMAND BAR ============ -->
   <div class="quick-chips-row">
-    <button class="chip-btn" onclick="sendInstantCommand('Mute mic')"><span class="material-symbols-outlined">mic_off</span>Mute</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Unmute mic')"><span class="material-symbols-outlined">mic</span>Unmute</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Set alarm for 7 am')"><span class="material-symbols-outlined">alarm</span>Alarm</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Set timer for 5 minutes')"><span class="material-symbols-outlined">timer</span>Timer</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Jarvis off d background')"><span class="material-symbols-outlined">power_settings_new</span>Off Background</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Hey Jarvis on')"><span class="material-symbols-outlined">bolt</span>Wake Jarvis</button>
+    <button class="chip-btn" onclick="triggerWhatsAppReader()"><span class="material-symbols-outlined">mark_chat_unread</span>WhatsApp Reader</button>
+    <button class="chip-btn" onclick="testWhatsAppMsg()"><span class="material-symbols-outlined">notifications_active</span>Test WA Msg</button>
+    <button class="chip-btn" onclick="sendInstantCommand('kuch bolo')"><span class="material-symbols-outlined">volume_up</span>Test Voice</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Read screen')"><span class="material-symbols-outlined">visibility</span>Read Screen</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Scroll down')"><span class="material-symbols-outlined">arrow_downward</span>Scroll Down</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Scroll up')"><span class="material-symbols-outlined">arrow_upward</span>Scroll Up</button>
     <button class="chip-btn" onclick="sendInstantCommand('Take screenshot')"><span class="material-symbols-outlined">screenshot</span>Screenshot</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Torch on')"><span class="material-symbols-outlined">flashlight_on</span>Torch</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Play song on YouTube')"><span class="material-symbols-outlined">smart_display</span>YouTube</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Play music')"><span class="material-symbols-outlined">music_note</span>Music</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Open Camera')"><span class="material-symbols-outlined">photo_camera</span>Camera</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Take selfie')"><span class="material-symbols-outlined">camera_front</span>Selfie</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Open WhatsApp')"><span class="material-symbols-outlined">chat</span>WhatsApp</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Volume 100%')"><span class="material-symbols-outlined">volume_up</span>Volume</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Battery status')"><span class="material-symbols-outlined">battery_std</span>Battery</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Time kya hai')"><span class="material-symbols-outlined">schedule</span>Time</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Navigate to nearby restaurants')"><span class="material-symbols-outlined">near_me</span>Navigate</button>
     <button class="chip-btn" onclick="sendInstantCommand('Go home')"><span class="material-symbols-outlined">home</span>Home</button>
     <button class="chip-btn" onclick="sendInstantCommand('Recent apps')"><span class="material-symbols-outlined">apps</span>Recents</button>
-    <button class="chip-btn" onclick="sendInstantCommand('Lock screen')"><span class="material-symbols-outlined">lock</span>Lock</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Torch on')"><span class="material-symbols-outlined">flashlight_on</span>Torch On</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Torch off')"><span class="material-symbols-outlined">flashlight_off</span>Torch Off</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Play song on YouTube')"><span class="material-symbols-outlined">smart_display</span>YouTube</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Open WhatsApp')"><span class="material-symbols-outlined">chat</span>WhatsApp</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Open Camera')"><span class="material-symbols-outlined">photo_camera</span>Camera</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Volume 100%')"><span class="material-symbols-outlined">volume_up</span>Volume 100%</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Battery status')"><span class="material-symbols-outlined">battery_std</span>Battery</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Time kya hai')"><span class="material-symbols-outlined">schedule</span>Time</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Set alarm for 7 am')"><span class="material-symbols-outlined">alarm</span>Alarm</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Set timer for 5 minutes')"><span class="material-symbols-outlined">timer</span>Timer</button>
     <button class="chip-btn" onclick="sendInstantCommand('Calculate 45 * 12')"><span class="material-symbols-outlined">calculate</span>Math</button>
     <button class="chip-btn" onclick="sendInstantCommand('Open Settings')"><span class="material-symbols-outlined">settings</span>Settings</button>
   </div>
@@ -1874,6 +1877,26 @@
       window.JarvisBridge.openTelegram();
     } else {
       window.open('https://t.me/+FeBUfQ14loAxZmU1', '_blank');
+    }
+  };
+
+  window.triggerWhatsAppReader = function() {
+    if (window.JarvisBridge && window.JarvisBridge.openNotificationSettings) {
+      if (!window.JarvisBridge.isNotificationListenerActive()) {
+        window.JarvisBridge.openNotificationSettings();
+      } else {
+        window.sendInstantCommand('whatsapp message padho');
+      }
+    } else {
+      window.sendInstantCommand('whatsapp message padho');
+    }
+  };
+
+  window.testWhatsAppMsg = function() {
+    if (window.JarvisBridge && window.JarvisBridge.testWhatsAppMessage) {
+      window.JarvisBridge.testWhatsAppMessage();
+    } else {
+      window.addChatMessage('jarvis', '[WhatsApp] Rohit Sharma: Bhai meeting kab shuru hogi?', formatCurrentTime());
     }
   };
 

@@ -53,6 +53,14 @@ class JarvisPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_MIC_MUTED, false)
         set(value) = prefs.edit().putBoolean(KEY_MIC_MUTED, value).apply()
 
+    var isStandbyMode: Boolean
+        get() = prefs.getBoolean(KEY_STANDBY_MODE, false)
+        set(value) = prefs.edit().putBoolean(KEY_STANDBY_MODE, value).apply()
+
+    var isWhatsAppReaderEnabled: Boolean
+        get() = prefs.getBoolean(KEY_WHATSAPP_READER, true)
+        set(value) = prefs.edit().putBoolean(KEY_WHATSAPP_READER, value).apply()
+
     companion object {
         private const val KEY_API_KEY = "api_key"
         private const val KEY_MODEL = "model"
@@ -64,5 +72,7 @@ class JarvisPreferences(context: Context) {
         private const val KEY_YOUTUBE_API_KEY = "youtube_api_key"
         private const val KEY_POWER_ONLINE = "power_online"
         private const val KEY_MIC_MUTED = "mic_muted"
+        private const val KEY_STANDBY_MODE = "standby_mode"
+        private const val KEY_WHATSAPP_READER = "whatsapp_reader"
     }
 }
