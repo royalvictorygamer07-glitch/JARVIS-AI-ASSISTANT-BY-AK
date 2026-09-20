@@ -5,6 +5,7 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Build
+import android.os.Bundle
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -247,6 +248,103 @@ class JarvisAccessibilityService : AccessibilityService() {
     }
 
     fun clickCenter(): Boolean = clickNormalized(0.5f, 0.5f)
+
+    /**
+     * Types text into the currently focused or first available editable field on screen
+     */
+    fun typeText(text: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focused != null && focused.isEditable) {
+            val arguments = Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+            }
+            if (focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)) {
+                return true
+            }
+        }
+
+        // Deep search for any editable field
+        val editable = findEditableNode(root)
+        if (editable != null) {
+            val arguments = Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+            }
+            return editable.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        }
+        return false
+    }
+
+    private fun findEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isEditable) return node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findEditableNode(child)
+            if (found != null) return found
+        }
+        return null
+    }
+
+    /**
+     * Double tap at screen coordinates
+     */
+    fun doubleClickAt(x: Float, y: Float): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+        val clickPath = Path().apply { moveTo(x, y) }
+        val stroke1 = GestureDescription.StrokeDescription(clickPath, 0, 40)
+        val stroke2 = GestureDescription.StrokeDescription(clickPath, 100, 40)
+        val gesture = GestureDescription.Builder()
+            .addStroke(stroke1)
+            .addStroke(stroke2)
+            .build()
+        return dispatchGesture(gesture, null, null)
+    }
+
+    /**
+     * Long press at screen coordinates
+     */
+    fun longPressAt(x: Float, y: Float, durationMs: Long = 1000): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+        val clickPath = Path().apply { moveTo(x, y) }
+        val stroke = GestureDescription.StrokeDescription(clickPath, 0, durationMs)
+        val gesture = GestureDescription.Builder()
+            .addStroke(stroke)
+            .build()
+        return dispatchGesture(gesture, null, null)
+    }
+
+    /**
+     * Intelligent click: understands synonyms like 'search', 'send', 'submit', 'play', 'cancel', 'ok', etc.
+     */
+    fun smartClick(intent: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val clean = intent.trim().lowercase()
+
+        // 1. Direct match first
+        if (clickByText(clean)) return true
+
+        // 2. Synonyms and semantic intent
+        val candidateKeywords = when {
+            clean in listOf("search", "find", "dhundo", "khojo") -> listOf("search", "find", "explore", "magnify", "go")
+            clean in listOf("send", "bhejo", "submit", "enter") -> listOf("send", "submit", "post", "done", "ok", "forward")
+            clean in listOf("play", "chalao", "bajao", "start") -> listOf("play", "resume", "watch", "start")
+            clean in listOf("pause", "roko", "thamo") -> listOf("pause", "stop", "hold")
+            clean in listOf("close", "band karo", "cancel", "hatao") -> listOf("close", "cancel", "dismiss", "x", "no", "not now", "skip")
+            clean in listOf("accept", "allow", "yes", "theek hai", "ha") -> listOf("allow", "agree", "accept", "continue", "ok", "yes", "confirm", "grant")
+            clean in listOf("next", "aage", "forward") -> listOf("next", "continue", "forward", ">")
+            clean in listOf("back", "piche") -> listOf("back", "previous", "<")
+            else -> listOf(clean)
+        }
+
+        for (kw in candidateKeywords) {
+            val node = findNodeRecursive(root, kw)
+            if (node != null && performClickOnNode(node)) {
+                return true
+            }
+        }
+
+        return false
+    }
 
     fun goBack(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
     fun goHome(): Boolean = performGlobalAction(GLOBAL_ACTION_HOME)

@@ -14,22 +14,48 @@ class TtsService(
     private val onStateChanged: (isSpeaking: Boolean) -> Unit
 ) : TextToSpeech.OnInitListener {
 
+    companion object {
+        private const val TAG = "TtsService"
+    }
+
     private var tts: TextToSpeech? = null
+    @Volatile
     private var isInitialized = false
     private var currentProfile: String = "Puck"
+    private var pendingSpeech: String? = null
 
     init {
-        tts = TextToSpeech(context, this)
+        try {
+            tts = TextToSpeech(context.applicationContext, this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error initializing TextToSpeech: ${e.message}")
+        }
     }
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             tts?.let { engine ->
-                val result = engine.setLanguage(Locale.US)
-                if (result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED) {
-                    isInitialized = true
+                var configured = false
+                val preferredLocales = listOf(
+                    Locale("en", "IN"),
+                    Locale.getDefault(),
+                    Locale.US,
+                    Locale("hi", "IN")
+                )
+                for (loc in preferredLocales) {
+                    val res = engine.setLanguage(loc)
+                    if (res != TextToSpeech.LANG_MISSING_DATA && res != TextToSpeech.LANG_NOT_SUPPORTED) {
+                        configured = true
+                        break
+                    }
                 }
+                if (!configured) {
+                    engine.language = Locale.getDefault()
+                }
+
+                isInitialized = true
                 applyVoiceProfile(currentProfile)
+
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {
                         onStateChanged(true)
@@ -43,7 +69,14 @@ class TtsService(
                         onStateChanged(false)
                     }
                 })
+
+                pendingSpeech?.let { text ->
+                    pendingSpeech = null
+                    speak(text)
+                }
             }
+        } else {
+            Log.e(TAG, "TextToSpeech onInit failed with status $status")
         }
     }
 
@@ -60,21 +93,20 @@ class TtsService(
                 lower.contains("sophia") || lower.contains("nova") || lower.contains("aoede") ||
                 lower.contains("kore") || lower.contains("leda") || lower.contains("ladki")
 
-        if (isGirl) {
-            // Female / Friday Voice: Fast, smooth, responsive
-            engine.setPitch(1.20f)
-            engine.setSpeechRate(1.18f)
+        try {
+            if (isGirl) {
+                engine.setPitch(1.18f)
+                engine.setSpeechRate(1.05f)
 
-            try {
                 val availableVoices = engine.voices
                 if (!availableVoices.isNullOrEmpty()) {
                     val femaleVoice = availableVoices.firstOrNull { voice ->
                         !voice.isNetworkConnectionRequired && (
                                 voice.name.contains("female", ignoreCase = true) ||
                                         voice.name.contains("f0", ignoreCase = true) ||
+                                        voice.name.contains("en-in-x-end", ignoreCase = true) ||
                                         voice.name.contains("en-us-x-sfg", ignoreCase = true) ||
                                         voice.name.contains("hi-in-x-hie", ignoreCase = true) ||
-                                        voice.name.contains("hi-in-x-hia", ignoreCase = true) ||
                                         (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP &&
                                                 voice.quality >= Voice.QUALITY_NORMAL &&
                                                 voice.features.contains("gender=female"))
@@ -87,41 +119,37 @@ class TtsService(
                         engine.voice = femaleVoice
                     }
                 }
-            } catch (e: Exception) {
-                Log.w("TtsService", "Error picking female voice: ${e.message}")
-            }
-        } else {
-            // Male / Jarvis Voice: Fast, crisp, continuous flow without halting
-            engine.setPitch(1.00f)
-            engine.setSpeechRate(1.22f)
+            } else {
+                engine.setPitch(1.00f)
+                engine.setSpeechRate(1.06f)
 
-            try {
                 val availableVoices = engine.voices
                 if (!availableVoices.isNullOrEmpty()) {
                     val maleVoice = availableVoices.firstOrNull { voice ->
                         !voice.isNetworkConnectionRequired && (
                                 voice.name.contains("male", ignoreCase = true) ||
                                         voice.name.contains("m0", ignoreCase = true) ||
-                                        voice.name.contains("en-us-x-sfg#male", ignoreCase = true) ||
-                                        voice.name.contains("en-us-x-iom", ignoreCase = true)
+                                        voice.name.contains("en-in-x-ena", ignoreCase = true) ||
+                                        voice.name.contains("en-us-x-iom", ignoreCase = true) ||
+                                        voice.name.contains("en-us-x-sfg#male", ignoreCase = true)
                                 )
                     }
                     if (maleVoice != null) {
                         engine.voice = maleVoice
                     }
                 }
-            } catch (e: Exception) {
-                Log.w("TtsService", "Error picking male voice: ${e.message}")
             }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error applying voice profile: ${e.message}")
         }
     }
 
     private fun sanitizeForSpeech(raw: String): String {
         var s = raw
-        // Speak creator link naturally
+        // Clean URL to friendly words
         s = s.replace(Regex("https?://t\\.me/\\S+"), "AK EXPLOITS Telegram channel")
         s = s.replace(Regex("https?://\\S+"), "link")
-        // Remove markdown tokens that cause TTS engines to halt or stumble
+        // Remove markdown tokens
         s = s.replace(Regex("[*#_`~>|\\[\\]{}()\"]"), " ")
         // Remove list bullets
         s = s.replace(Regex("^[\\s*-•]+", RegexOption.MULTILINE), " ")
@@ -142,69 +170,65 @@ class TtsService(
         return s.replace(Regex("\\s+"), " ").trim()
     }
 
-    private fun isHindiText(text: String): Boolean {
-        if (text.any { it in '\u0900'..'\u097F' }) return true
-        val lower = text.lowercase(Locale.ROOT)
-        val hindiMarkers = listOf(
-            "hai", "hoon", "aap", "mera", "meri", "karo", "karein", "raha",
-            "rahi", "kya", "batao", "tum", "kaun", "banaya", "chalu", "band",
-            "awaz", "aawaz", "shant", "badhao", "dheemi", "gaya"
-        )
-        return hindiMarkers.any { lower.contains(it) }
+    private fun containsDevanagari(text: String): Boolean {
+        return text.any { it in '\u0900'..'\u097F' }
     }
 
     fun speak(text: String) {
-        if (!isInitialized || tts == null) {
-            onStateChanged(false)
-            return
-        }
         val cleaned = sanitizeForSpeech(text)
         if (cleaned.isBlank()) {
             onStateChanged(false)
             return
         }
 
+        if (!isInitialized || tts == null) {
+            pendingSpeech = cleaned
+            return
+        }
+
         val engine = tts ?: return
 
         try {
-            if (isHindiText(cleaned)) {
+            if (containsDevanagari(cleaned)) {
                 val hiLocale = Locale("hi", "IN")
-                val enInLocale = Locale("en", "IN")
                 if (engine.isLanguageAvailable(hiLocale) >= TextToSpeech.LANG_AVAILABLE) {
                     engine.language = hiLocale
-                } else if (engine.isLanguageAvailable(enInLocale) >= TextToSpeech.LANG_AVAILABLE) {
-                    engine.language = enInLocale
                 }
             } else {
-                engine.language = Locale.US
+                // For English and Roman Hinglish ("Alarm set kar diya gaya hai"):
+                // Use Indian English or default locale so Roman words are pronounced naturally without spelling out
+                val enInLocale = Locale("en", "IN")
+                if (engine.isLanguageAvailable(enInLocale) >= TextToSpeech.LANG_AVAILABLE) {
+                    engine.language = enInLocale
+                } else {
+                    engine.language = Locale.getDefault()
+                }
             }
         } catch (_: Exception) {}
 
-        val isGirl = currentProfile.lowercase(Locale.ROOT).let {
-            it.contains("girl") || it.contains("female") || it.contains("friday")
-        }
-        if (isGirl) {
-            engine.setSpeechRate(1.18f)
-            engine.setPitch(1.20f)
-        } else {
-            engine.setSpeechRate(1.22f)
-            engine.setPitch(1.00f)
-        }
+        applyVoiceProfile(currentProfile)
 
+        val utteranceId = "JARVIS_SPEECH_${System.currentTimeMillis()}"
         val params = Bundle().apply {
-            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "JARVIS_SPEECH_${System.currentTimeMillis()}")
+            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
         }
-        engine.speak(cleaned, TextToSpeech.QUEUE_FLUSH, params, "JARVIS_SPEECH_${System.currentTimeMillis()}")
+        engine.speak(cleaned, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
     }
 
     fun stop() {
-        tts?.stop()
+        pendingSpeech = null
+        try {
+            tts?.stop()
+        } catch (_: Exception) {}
         onStateChanged(false)
     }
 
     fun shutdown() {
-        tts?.stop()
-        tts?.shutdown()
+        pendingSpeech = null
+        try {
+            tts?.stop()
+            tts?.shutdown()
+        } catch (_: Exception) {}
         tts = null
         isInitialized = false
     }

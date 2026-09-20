@@ -423,7 +423,7 @@
     </div>
     <div class="panel">
       <div class="perm-top">
-        <span class="perm-summary"><b id="permCount">0/6</b> granted</span>
+        <span class="perm-summary"><b id="permCount">0/13</b> granted</span>
         <button class="allow-all-btn" onclick="allowAll()">ALLOW ALL</button>
       </div>
 
@@ -503,7 +503,21 @@
           <div class="perm-status pending" id="permAccessibilityBtn" onclick="openScreenControlSettings()">ENABLE</div>
         </div>
 
-        <!-- 11. Modify System Settings -->
+        <!-- 11. SMS & Messaging -->
+        <div class="perm-row">
+          <div class="perm-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#3be6a0" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+          <div class="perm-info"><div class="t">SMS &amp; Text Messaging</div><div class="s">For sending hands-free text messages via voice</div></div>
+          <div class="perm-status pending" id="permSmsBtn" onclick="requestPerm('sms')">ALLOW</div>
+        </div>
+
+        <!-- 12. Calendar & Schedules -->
+        <div class="perm-row">
+          <div class="perm-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#8a7bf7" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+          <div class="perm-info"><div class="t">Calendar &amp; Routines</div><div class="s">For event reminders and scheduled tasks</div></div>
+          <div class="perm-status pending" id="permCalendarBtn" onclick="requestPerm('calendar')">ALLOW</div>
+        </div>
+
+        <!-- 13. Modify System Settings -->
         <div class="perm-row">
           <div class="perm-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#ffbe4d" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9"/></svg></div>
           <div class="perm-info"><div class="t">Modify System Settings</div><div class="s">For voice screen brightness and system volume</div></div>
@@ -876,7 +890,7 @@
     }
     if (!perms) return;
 
-    const total = 11;
+    const total = 13;
     const missing = [];
 
     function updateBadge(btnId, isAllowed, permType, actionLabel = 'ALLOW') {
@@ -903,12 +917,14 @@
     updateBadge('permBatteryBtn', perms.battery, 'battery'); if (!perms.battery) missing.push("Battery");
     updateBadge('permOverlayBtn', perms.overlay, 'overlay'); if (!perms.overlay) missing.push("Overlay");
     updateBadge('permAccessibilityBtn', perms.accessibility, 'accessibility', 'ENABLE'); if (!perms.accessibility) missing.push("Accessibility");
+    updateBadge('permSmsBtn', perms.sms, 'sms'); if (!perms.sms) missing.push("SMS");
+    updateBadge('permCalendarBtn', perms.calendar, 'calendar'); if (!perms.calendar) missing.push("Calendar");
     updateBadge('permSettingsBtn', perms.settings, 'settings'); if (!perms.settings) missing.push("System Settings");
 
     const finalCount = [
       perms.mic, perms.camera, perms.notification, perms.contacts,
       perms.phone, perms.location, perms.bluetooth, perms.battery,
-      perms.overlay, perms.accessibility, perms.settings
+      perms.overlay, perms.accessibility, perms.sms, perms.calendar, perms.settings
     ].filter(Boolean).length;
 
     document.getElementById('permCount').textContent = finalCount + '/' + total;
@@ -1013,6 +1029,21 @@
       toast.classList.remove('show');
     }, 2400);
   }
+
+  window.updatePermissionsState = function(data) {
+    if (typeof data === "string") {
+      try { data = JSON.parse(data); } catch(e){}
+    }
+    if (!data) return;
+    if (data.permissions) {
+      updatePermissions(data.permissions);
+    } else {
+      updatePermissions(data);
+    }
+    if (data.screenControlActive !== undefined) {
+      setScreenControlStatus(data.screenControlActive);
+    }
+  };
 
   function openScreenControlSettings() {
     if (window.JarvisSettingsBridge && window.JarvisSettingsBridge.openScreenControlSettings) {

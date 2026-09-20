@@ -80,6 +80,25 @@ class VoiceRecognitionHelper(
         }
     }
 
+    private fun stopRecognizerCleanly() {
+        try {
+            speechRecognizer?.stopListening()
+            speechRecognizer?.cancel()
+            speechRecognizer?.destroy()
+        } catch (_: Exception) {}
+        speechRecognizer = null
+        isListening = false
+        isStarting = false
+    }
+
+    private fun cancelSession() {
+        try {
+            speechRecognizer?.cancel()
+        } catch (_: Exception) {}
+        isListening = false
+        isStarting = false
+    }
+
     private fun startListeningInternal() {
         mainHandler.post {
             if (isMutedProvider() || !isPowerOnlineProvider() || isPausedForTts) {
@@ -88,7 +107,7 @@ class VoiceRecognitionHelper(
                 return@post
             }
 
-            if (isStarting) return@post
+            if (isStarting || isListening) return@post
             isStarting = true
 
             try {
@@ -103,113 +122,106 @@ class VoiceRecognitionHelper(
                     return@post
                 }
 
-                stopRecognizerCleanly()
+                if (speechRecognizer == null) {
+                    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
+                        setRecognitionListener(object : RecognitionListener {
+                            override fun onReadyForSpeech(params: Bundle?) {
+                                isStarting = false
+                                isListening = true
+                                onListeningStateChanged(true)
+                            }
 
-                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-                    setRecognitionListener(object : RecognitionListener {
-                        override fun onReadyForSpeech(params: Bundle?) {
-                            isStarting = false
-                            isListening = true
-                            onListeningStateChanged(true)
-                        }
+                            override fun onBeginningOfSpeech() {
+                                isListening = true
+                            }
 
-                        override fun onBeginningOfSpeech() {
-                            isListening = true
-                        }
+                            override fun onRmsChanged(rmsdB: Float) {
+                                val normalized = ((rmsdB + 2f) / 10f).coerceIn(0f, 1f)
+                                onAudioLevel(normalized)
+                            }
 
-                        override fun onRmsChanged(rmsdB: Float) {
-                            // Map rmsdB (-2 to 10 typical) to 0.0 - 1.0 smoothly
-                            val normalized = ((rmsdB + 2f) / 10f).coerceIn(0f, 1f)
-                            onAudioLevel(normalized)
-                        }
+                            override fun onBufferReceived(buffer: ByteArray?) {}
 
-                        override fun onBufferReceived(buffer: ByteArray?) {}
+                            override fun onEndOfSpeech() {
+                                isListening = false
+                                onListeningStateChanged(false)
+                            }
 
-                        override fun onEndOfSpeech() {
-                            isListening = false
-                            onListeningStateChanged(false)
-                        }
+                            override fun onError(error: Int) {
+                                isStarting = false
+                                isListening = false
+                                onListeningStateChanged(false)
 
-                        override fun onError(error: Int) {
-                            isStarting = false
-                            isListening = false
-                            onListeningStateChanged(false)
+                                Log.d(TAG, "SpeechRecognizer error: $error")
 
-                            Log.d(TAG, "SpeechRecognizer error: $error")
-
-                            // In continuous listening mode, recover automatically without turning off mic
-                            when (error) {
-                                SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
-                                SpeechRecognizer.ERROR_NO_MATCH -> {
-                                    // Natural end of silence; seamlessly restart listening
-                                    stopRecognizerCleanly()
-                                    scheduleRestart(150L)
-                                }
-                                SpeechRecognizer.ERROR_AUDIO,
-                                SpeechRecognizer.ERROR_CLIENT,
-                                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
-                                    // Client or audio buffer reset; re-arm cleanly
-                                    stopRecognizerCleanly()
-                                    scheduleRestart(300L)
-                                }
-                                SpeechRecognizer.ERROR_NETWORK,
-                                SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> {
-                                    // Transient network issue; retry after 800ms
-                                    stopRecognizerCleanly()
-                                    scheduleRestart(800L)
-                                }
-                                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
-                                    stopRecognizerCleanly()
-                                    isContinuousListening = false
-                                    onError("Microphone permission required")
-                                }
-                                else -> {
-                                    stopRecognizerCleanly()
-                                    scheduleRestart(400L)
+                                when (error) {
+                                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
+                                    SpeechRecognizer.ERROR_NO_MATCH -> {
+                                        cancelSession()
+                                        scheduleRestart(180L)
+                                    }
+                                    SpeechRecognizer.ERROR_AUDIO,
+                                    SpeechRecognizer.ERROR_CLIENT,
+                                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
+                                        stopRecognizerCleanly()
+                                        scheduleRestart(350L)
+                                    }
+                                    SpeechRecognizer.ERROR_NETWORK,
+                                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> {
+                                        cancelSession()
+                                        scheduleRestart(800L)
+                                    }
+                                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
+                                        stopRecognizerCleanly()
+                                        isContinuousListening = false
+                                        onError("Microphone permission required")
+                                    }
+                                    else -> {
+                                        cancelSession()
+                                        scheduleRestart(350L)
+                                    }
                                 }
                             }
-                        }
 
-                        override fun onResults(results: Bundle?) {
-                            isStarting = false
-                            isListening = false
-                            onListeningStateChanged(false)
+                            override fun onResults(results: Bundle?) {
+                                isStarting = false
+                                isListening = false
+                                onListeningStateChanged(false)
 
-                            val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                            val text = matches?.firstOrNull()?.trim() ?: ""
+                                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                                val text = matches?.firstOrNull()?.trim() ?: ""
 
-                            stopRecognizerCleanly()
+                                cancelSession()
 
-                            if (text.isNotBlank()) {
-                                onResult(text)
-                            } else {
-                                // Empty result, keep listening
-                                scheduleRestart(150L)
+                                if (text.isNotBlank()) {
+                                    onResult(text)
+                                } else {
+                                    scheduleRestart(180L)
+                                }
                             }
-                        }
 
-                        override fun onPartialResults(partialResults: Bundle?) {
-                            val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                            val partialText = matches?.firstOrNull()?.trim() ?: ""
-                            if (partialText.isNotBlank()) {
-                                onPartialResult?.invoke(partialText)
+                            override fun onPartialResults(partialResults: Bundle?) {
+                                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                                val partialText = matches?.firstOrNull()?.trim() ?: ""
+                                if (partialText.isNotBlank()) {
+                                    onPartialResult?.invoke(partialText)
+                                }
                             }
-                        }
 
-                        override fun onEvent(eventType: Int, params: Bundle?) {}
-                    })
+                            override fun onEvent(eventType: Int, params: Bundle?) {}
+                        })
+                    }
                 }
 
-                val userLang = Locale.getDefault().toLanguageTag().ifBlank { "en-IN" }
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, userLang)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, userLang)
-                    putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("hi-IN", "en-IN", "en-US", "hi"))
-                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-IN")
+                    putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("hi-IN", "en-IN", "hi", "en-US"))
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 750L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
                     putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 500L)
                 }
 
@@ -223,17 +235,6 @@ class VoiceRecognitionHelper(
                 scheduleRestart(500L)
             }
         }
-    }
-
-    private fun stopRecognizerCleanly() {
-        try {
-            speechRecognizer?.stopListening()
-            speechRecognizer?.cancel()
-            speechRecognizer?.destroy()
-        } catch (_: Exception) {}
-        speechRecognizer = null
-        isListening = false
-        isStarting = false
     }
 
     fun stopListening() {

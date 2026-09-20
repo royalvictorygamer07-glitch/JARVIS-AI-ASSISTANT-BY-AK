@@ -16,6 +16,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.speech.RecognizerIntent
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -267,6 +268,8 @@ class MainActivity : ComponentActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            // Use software rendering if hardware graphics driver / mesa rendernode fails in virtualized environments
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null)
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -274,6 +277,7 @@ class MainActivity : ComponentActivity() {
                 cacheMode = WebSettings.LOAD_DEFAULT
                 useWideViewPort = true
                 loadWithOverviewMode = true
+                mediaPlaybackRequiresUserGesture = false
             }
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
@@ -527,10 +531,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun hasAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    }
+
     override fun onResume() {
         super.onResume()
         updateSettingsPermissionsInWeb()
-        JarvisBackgroundService.instance?.setUiListener(serviceListener)
+        val service = JarvisBackgroundService.instance
+        if (service != null) {
+            service.setUiListener(serviceListener)
+            if (!prefs.isMicMuted && prefs.isPowerOnline && hasAudioPermission()) {
+                service.voiceHelper.startContinuousListening()
+            }
+        } else {
+            JarvisBackgroundService.startService(this)
+        }
         syncRecentChatHistory()
     }
 
@@ -634,11 +650,20 @@ class MainActivity : ComponentActivity() {
 
     private fun requestSpecificPermission(perm: String) {
         when (perm) {
-            "record_audio" -> requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            "record_audio", "mic" -> requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             "camera" -> requestAudioPermissionLauncher.launch(Manifest.permission.CAMERA)
-            "phone" -> requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_CONTACTS))
+            "phone" -> requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CONTACTS))
             "contacts" -> requestAudioPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
             "location" -> requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            "sms" -> requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.SEND_SMS, Manifest.permission.RECEIVE_SMS))
+            "calendar" -> requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR))
+            "bluetooth" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT))
+                } else {
+                    requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH, Manifest.permission.BLUETOOTH_ADMIN))
+                }
+            }
             "notifications" -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     requestAudioPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -659,6 +684,14 @@ class MainActivity : ComponentActivity() {
                     } catch (_: Exception) {}
                 }
             }
+            "settings" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.System.canWrite(this)) {
+                    val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:$packageName"))
+                    try {
+                        startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+            }
         }
     }
 
@@ -668,9 +701,17 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.CAMERA,
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.CALL_PHONE,
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.READ_CALENDAR,
+            Manifest.permission.WRITE_CALENDAR,
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -692,10 +733,23 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.System.canWrite(this)) {
+            AlertDialog.Builder(this)
+                .setTitle("Modify System Settings")
+                .setMessage("Allow Jarvis to adjust screen brightness and volume on voice command.")
+                .setPositiveButton("Grant") { _, _ ->
+                    val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:$packageName"))
+                    startActivity(intent)
+                }
+                .setNegativeButton("Later", null)
+                .show()
+            return
+        }
+
         if (!JarvisAccessibilityService.isRunning()) {
             AlertDialog.Builder(this)
                 .setTitle("Screen Automation Service")
-                .setMessage("Enable 'Jarvis AI' under Accessibility for 100% voice screen clicks.")
+                .setMessage("Enable 'Jarvis AI' under Accessibility for 100% voice screen clicks and full screen control.")
                 .setPositiveButton("Open Settings") { _, _ ->
                     openScreenControlSettings()
                 }
@@ -713,10 +767,18 @@ class MainActivity : ComponentActivity() {
         val isPhone = has(Manifest.permission.CALL_PHONE)
         val isContacts = has(Manifest.permission.READ_CONTACTS)
         val isLocation = has(Manifest.permission.ACCESS_FINE_LOCATION) || has(Manifest.permission.ACCESS_COARSE_LOCATION)
+        val isSms = has(Manifest.permission.SEND_SMS)
+        val isCalendar = has(Manifest.permission.READ_CALENDAR)
+        val isBluetooth = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            has(Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            has(Manifest.permission.BLUETOOTH)
+        }
         val isNotif = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             has(Manifest.permission.POST_NOTIFICATIONS)
         } else true
         val isOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
+        val isSettings = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.System.canWrite(this) else true
         val isBattery = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
             powerManager?.isIgnoringBatteryOptimizations(packageName) ?: false
@@ -734,6 +796,8 @@ class MainActivity : ComponentActivity() {
             put("isMicMuted", prefs.isMicMuted)
             put("isPowerOnline", prefs.isPowerOnline)
             put("screenControlActive", isAccessibility)
+
+            // Direct flags for legacy callers
             put("permAudio", isAudio)
             put("permCamera", isCamera)
             put("permPhone", isPhone)
@@ -743,6 +807,28 @@ class MainActivity : ComponentActivity() {
             put("permOverlay", isOverlay)
             put("permBattery", isBattery)
             put("permAccessibility", isAccessibility)
+            put("permBluetooth", isBluetooth)
+            put("permSms", isSms)
+            put("permCalendar", isCalendar)
+            put("permSettings", isSettings)
+
+            // Nested permissions object for settings.html updatePermissions()
+            val permsObj = JSONObject().apply {
+                put("mic", isAudio)
+                put("camera", isCamera)
+                put("notification", isNotif)
+                put("contacts", isContacts)
+                put("phone", isPhone)
+                put("location", isLocation)
+                put("sms", isSms)
+                put("calendar", isCalendar)
+                put("bluetooth", isBluetooth)
+                put("battery", isBattery)
+                put("overlay", isOverlay)
+                put("accessibility", isAccessibility)
+                put("settings", isSettings)
+            }
+            put("permissions", permsObj)
         }
         return json.toString()
     }
