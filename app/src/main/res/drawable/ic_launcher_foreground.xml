@@ -1,0 +1,43 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Outer Reactor Ring -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#74D1FF"
+        android:strokeWidth="1.5"
+        android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26" />
+        
+    <!-- Segment notches -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M52.5,23.5 h3 v5 h-3 z M52.5,79.5 h3 v5 h-3 z M23.5,52.5 h5 v3 h-5 z M79.5,52.5 h5 v3 h-5 z" />
+    <path
+        android:fillColor="#74D1FF"
+        android:pathData="M33,33 l3.5,3.5 l-2.1,2.1 l-3.5,-3.5 z M71.5,71.5 l3.5,3.5 l-2.1,2.1 l-3.5,-3.5 z M71.5,36.5 l3.5,-3.5 l2.1,2.1 l-3.5,3.5 z M33,75 l3.5,-3.5 l2.1,2.1 l-3.5,3.5 z" />
+
+    <!-- Middle Glowing Ring -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2.5"
+        android:pathData="M54,34 A20,20 0 1,0 54,74 A20,20 0 1,0 54,34" />
+
+    <!-- Inner Core Housing (Hexagon Plate) -->
+    <path
+        android:fillColor="#202427"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="1.2"
+        android:pathData="M54,41 L65,47.5 L65,60.5 L54,67 L43,60.5 L43,47.5 Z" />
+
+    <!-- Center Radiant Core -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M54,46 A8,8 0 1,0 54,62 A8,8 0 1,0 54,46" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,50 A4,4 0 1,0 54,58 A4,4 0 1,0 54,50" />
+</vector>

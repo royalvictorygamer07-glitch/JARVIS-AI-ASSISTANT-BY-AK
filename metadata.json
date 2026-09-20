@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix Jarvis AI",
+  "description": "High-performance Jarvis AI Assistant with instant voice command execution, microphone mute/unmute control, full screen automation, and autonomous intelligence.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

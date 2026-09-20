@@ -1,0 +1,252 @@
+package com.example.service
+
+import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
+import android.graphics.Rect
+import android.os.Build
+import android.util.DisplayMetrics
+import android.util.Log
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+
+class JarvisAccessibilityService : AccessibilityService() {
+
+    companion object {
+        private const val TAG = "JarvisAccessService"
+
+        @Volatile
+        var instance: JarvisAccessibilityService? = null
+            private set
+
+        fun isRunning(): Boolean = instance != null
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        instance = this
+        Log.d(TAG, "Jarvis Accessibility Screen Control Service connected")
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // Active event stream monitored for screen responsiveness
+    }
+
+    override fun onInterrupt() {
+        Log.w(TAG, "Jarvis Accessibility Service interrupted")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (instance == this) {
+            instance = null
+        }
+        Log.d(TAG, "Jarvis Accessibility Service destroyed")
+    }
+
+    /**
+     * Dispatches a tap gesture at the specified screen coordinates (x, y)
+     */
+    fun clickAt(x: Float, y: Float, onComplete: ((Boolean) -> Unit)? = null): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            onComplete?.invoke(false)
+            return false
+        }
+
+        val clickPath = Path().apply {
+            moveTo(x, y)
+        }
+
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(clickPath, 0, 50))
+            .build()
+
+        return dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                Log.d(TAG, "Gesture click succeeded at ($x, $y)")
+                onComplete?.invoke(true)
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                Log.w(TAG, "Gesture click cancelled at ($x, $y)")
+                onComplete?.invoke(false)
+            }
+        }, null)
+    }
+
+    /**
+     * Searches for any UI element containing [text] and clicks it
+     */
+    fun clickByText(text: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val cleanText = text.trim()
+        if (cleanText.isEmpty()) return false
+
+        // 1. First attempt: built-in text search
+        val nodes = root.findAccessibilityNodeInfosByText(cleanText)
+        if (!nodes.isNullOrEmpty()) {
+            for (node in nodes) {
+                if (performClickOnNode(node)) {
+                    return true
+                }
+            }
+        }
+
+        // 2. Second attempt: Recursive deep search for case-insensitive and content-description matches
+        val targetNode = findNodeRecursive(root, cleanText.lowercase())
+        if (targetNode != null) {
+            return performClickOnNode(targetNode)
+        }
+
+        return false
+    }
+
+    private fun findNodeRecursive(node: AccessibilityNodeInfo, targetLower: String): AccessibilityNodeInfo? {
+        val text = node.text?.toString()?.lowercase() ?: ""
+        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+        val viewId = node.viewIdResourceName?.lowercase() ?: ""
+
+        if (text.contains(targetLower) || desc.contains(targetLower) || (viewId.isNotEmpty() && viewId.contains(targetLower))) {
+            return node
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val match = findNodeRecursive(child, targetLower)
+            if (match != null) return match
+        }
+        return null
+    }
+
+    private fun performClickOnNode(node: AccessibilityNodeInfo): Boolean {
+        // Direct click
+        if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            return true
+        }
+
+        // Parent click
+        var parent = node.parent
+        while (parent != null) {
+            if (parent.isClickable && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true
+            }
+            parent = parent.parent
+        }
+
+        // Gesture click on center bounds
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        if (!bounds.isEmpty && bounds.width() > 0 && bounds.height() > 0) {
+            return clickAt(bounds.centerX().toFloat(), bounds.centerY().toFloat())
+        }
+
+        return false
+    }
+
+    /**
+     * Click screen center
+     */
+    fun clickCenter(): Boolean {
+        val dm = resources.displayMetrics
+        return clickAt(dm.widthPixels / 2f, dm.heightPixels / 2f)
+    }
+
+    /**
+     * Click relative position: "center", "top", "bottom", "left", "right"
+     */
+    fun clickPosition(position: String): Boolean {
+        val dm = resources.displayMetrics
+        val w = dm.widthPixels.toFloat()
+        val h = dm.heightPixels.toFloat()
+        return when (position.lowercase()) {
+            "top", "upar" -> clickAt(w / 2f, h * 0.25f)
+            "bottom", "niche" -> clickAt(w / 2f, h * 0.75f)
+            "left", "baye" -> clickAt(w * 0.25f, h / 2f)
+            "right", "daye" -> clickAt(w * 0.75f, h / 2f)
+            else -> clickAt(w / 2f, h / 2f)
+        }
+    }
+
+    /**
+     * Scroll up or down
+     */
+    fun scroll(down: Boolean): Boolean {
+        val root = rootInActiveWindow
+        if (root != null) {
+            val action = if (down) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+            if (root.performAction(action)) return true
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val dm = resources.displayMetrics
+            val startX = dm.widthPixels / 2f
+            val startY = if (down) dm.heightPixels * 0.75f else dm.heightPixels * 0.25f
+            val endY = if (down) dm.heightPixels * 0.25f else dm.heightPixels * 0.75f
+
+            val swipePath = Path().apply {
+                moveTo(startX, startY)
+                lineTo(startX, endY)
+            }
+
+            val gesture = GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(swipePath, 0, 300))
+                .build()
+
+            return dispatchGesture(gesture, null, null)
+        }
+        return false
+    }
+
+    /**
+     * Clicks at normalized coordinates (0.0 to 1.0)
+     */
+    fun clickNormalized(pctX: Float, pctY: Float): Boolean {
+        val dm = resources.displayMetrics
+        val x = (pctX.coerceIn(0f, 1f)) * dm.widthPixels
+        val y = (pctY.coerceIn(0f, 1f)) * dm.heightPixels
+        return clickAt(x, y)
+    }
+
+    /**
+     * Swipes between two normalized points
+     */
+    fun swipe(fromX: Float, fromY: Float, toX: Float, toY: Float, durationMs: Long = 300): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+        val dm = resources.displayMetrics
+        val p1 = Path().apply {
+            moveTo(fromX * dm.widthPixels, fromY * dm.heightPixels)
+            lineTo(toX * dm.widthPixels, toY * dm.heightPixels)
+        }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(p1, 0, durationMs))
+            .build()
+        return dispatchGesture(gesture, null, null)
+    }
+
+    /**
+     * Collects all currently visible texts and button labels on screen
+     */
+    fun collectVisibleScreenTexts(): List<String> {
+        val root = rootInActiveWindow ?: return emptyList()
+        val results = mutableListOf<String>()
+        collectTextsRecursive(root, results)
+        return results.distinct().take(30)
+    }
+
+    private fun collectTextsRecursive(node: AccessibilityNodeInfo, list: MutableList<String>) {
+        val t = node.text?.toString()?.trim()
+        val d = node.contentDescription?.toString()?.trim()
+        if (!t.isNullOrEmpty() && t.length < 80) list.add(t)
+        if (!d.isNullOrEmpty() && d.length < 80 && d != t) list.add(d)
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectTextsRecursive(child, list)
+        }
+    }
+
+    fun goBack(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
+    fun goHome(): Boolean = performGlobalAction(GLOBAL_ACTION_HOME)
+    fun openRecents(): Boolean = performGlobalAction(GLOBAL_ACTION_RECENTS)
+    fun openNotifications(): Boolean = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+}

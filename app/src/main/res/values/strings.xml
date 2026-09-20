@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Jarvis AI</string>
+    <string name="accessibility_service_description">Enables Jarvis AI to control the screen by voice commands, click on requested items, buttons, or coordinates, and navigate hands-free.</string>
+</resources>

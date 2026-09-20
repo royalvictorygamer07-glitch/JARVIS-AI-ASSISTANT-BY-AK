@@ -1,0 +1,1896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
+<title>Jarvis AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<style>
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background-color: #020509;
+    background-image: 
+      linear-gradient(rgba(0, 229, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 229, 255, 0.035) 1px, transparent 1px);
+    background-size: 32px 32px;
+    background-position: center center;
+    color: #ffffff;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    overflow-y: auto;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    display: inline-block;
+    line-height: 1;
+    direction: ltr;
+  }
+
+  /* App Layout */
+  .app-container {
+    position: relative;
+    width: 100%;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding-top: max(env(safe-area-inset-top, 0px), 12px);
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
+    padding-left: 18px;
+    padding-right: 18px;
+    overflow-x: hidden;
+  }
+
+  /* Ambient Cyber Glow */
+  .ambient-center-glow {
+    position: fixed;
+    top: 36%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 360px;
+    height: 360px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0, 229, 255, 0.12) 0%, rgba(14, 116, 144, 0.04) 50%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ================= TOP HEADER ================= */
+  .app-header {
+    position: relative;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 4px 10px 4px;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+  }
+
+  /* Hexagonal Jarvis Emblem */
+  .emblem-hex {
+    width: 42px;
+    height: 42px;
+    background: rgba(4, 20, 30, 0.85);
+    border: 1.5px solid #00e5ff;
+    border-radius: 12px;
+    box-shadow: 0 0 14px rgba(0, 229, 255, 0.45), inset 0 0 10px rgba(0, 229, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .emblem-hex svg {
+    width: 20px;
+    height: 20px;
+    fill: #00e5ff;
+    filter: drop-shadow(0 0 4px #00e5ff);
+  }
+
+  .header-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .header-title {
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #ffffff;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+
+  .header-subtitle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #94a3b8;
+    font-weight: 500;
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #00e5ff;
+    box-shadow: 0 0 8px #00e5ff;
+    animation: pulseDot 2s infinite ease-in-out;
+  }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.85); }
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .clock-telemetry {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+  }
+  .live-time-digits {
+    font-size: 14px;
+    font-weight: 700;
+    color: #f1f5f9;
+    letter-spacing: 0.05em;
+    font-family: monospace;
+  }
+  .signal-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 10px;
+  }
+  .signal-bar {
+    width: 2.5px;
+    background: #00e5ff;
+    border-radius: 1px;
+    opacity: 0.85;
+  }
+  .signal-bar:nth-child(1) { height: 3px; }
+  .signal-bar:nth-child(2) { height: 5px; }
+  .signal-bar:nth-child(3) { height: 7.5px; }
+  .signal-bar:nth-child(4) { height: 10px; }
+
+  /* Hexagonal Settings Button */
+  .settings-hex-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: rgba(8, 22, 32, 0.7);
+    border: 1.5px solid rgba(0, 229, 255, 0.4);
+    box-shadow: 0 0 15px rgba(0, 229, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #00e5ff;
+    transition: all 0.2s ease;
+  }
+  .settings-hex-btn:active {
+    transform: scale(0.92);
+    background: rgba(0, 229, 255, 0.15);
+    border-color: #00e5ff;
+  }
+
+  /* ================= PERMISSION HUD BANNER / CARD ================= */
+  .permissions-hud-card {
+    display: none !important;
+  }
+  .permissions-hud-card.all-granted {
+    display: none !important;
+  }
+
+  .perm-hud-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .perm-hud-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .perm-shield-icon {
+    font-size: 19px;
+    color: #00e5ff;
+  }
+  .all-granted .perm-shield-icon {
+    color: #34d399;
+  }
+  .perm-hud-text {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: #e2e8f0;
+    text-transform: uppercase;
+  }
+  .perm-hud-count {
+    color: #00e5ff;
+    font-weight: 700;
+  }
+  .all-granted .perm-hud-count {
+    color: #34d399;
+  }
+
+  .perm-hud-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn-grant-all {
+    background: linear-gradient(135deg, #00e5ff, #0284c7);
+    color: #02121e;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 6px 13px;
+    border-radius: 20px;
+    border: none;
+    box-shadow: 0 0 14px rgba(0, 229, 255, 0.5);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .btn-grant-all:active {
+    transform: scale(0.93);
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.8);
+  }
+  .btn-expand-perm {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+  }
+  .btn-expand-perm svg {
+    width: 18px;
+    height: 18px;
+    transition: transform 0.25s ease;
+  }
+  .btn-expand-perm.open svg {
+    transform: rotate(180deg);
+  }
+
+  /* Collapsible Permission Grid */
+  .perm-details-tray {
+    display: none;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(0, 229, 255, 0.2);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .perm-details-tray.collapsed {
+    display: none !important;
+  }
+
+  .perm-mini-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(2, 10, 16, 0.5);
+    border: 1px solid rgba(0, 229, 255, 0.08);
+  }
+  .perm-mini-title {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #cbd5e1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .perm-mini-title span.material-symbols-outlined {
+    font-size: 15px;
+    color: #00e5ff;
+  }
+  .perm-mini-btn {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 3px 9px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid rgba(0, 229, 255, 0.4);
+    background: rgba(0, 229, 255, 0.12);
+    color: #00e5ff;
+    text-transform: uppercase;
+  }
+  .perm-mini-btn.granted {
+    border-color: rgba(52, 211, 153, 0.4);
+    background: rgba(52, 211, 153, 0.15);
+    color: #34d399;
+    cursor: default;
+  }
+
+  /* ================= CENTER HUD ARC REACTOR (HYPER ULTRA-PREMIUM SCI-FI) ================= */
+  .center-stage {
+    position: relative;
+    z-index: 10;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 0;
+  }
+
+  .reactor-hud-container {
+    position: relative;
+    width: 280px;
+    height: 280px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    filter: drop-shadow(0 0 45px rgba(0, 229, 255, 0.35));
+    transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .reactor-hud-container:hover {
+    transform: scale(1.02);
+  }
+  .reactor-hud-container:active {
+    transform: scale(0.95);
+  }
+
+  /* Deep Atmospheric Glow Behind the Reactor */
+  .reactor-atmospheric-glow {
+    position: absolute;
+    width: 290px;
+    height: 290px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0, 229, 255, 0.22) 0%, rgba(14, 165, 233, 0.12) 40%, rgba(2, 6, 23, 0) 72%);
+    pointer-events: none;
+    animation: atmospherePulse 4s ease-in-out infinite alternate;
+  }
+  @keyframes atmospherePulse {
+    0% { transform: scale(0.92); opacity: 0.6; }
+    100% { transform: scale(1.08); opacity: 1; }
+  }
+
+  /* Holographic Quantum Particle Ring (SVG rotating) */
+  .reactor-quantum-svg {
+    position: absolute;
+    width: 270px;
+    height: 270px;
+    pointer-events: none;
+    animation: rotateReactorCW 50s linear infinite;
+  }
+
+  /* Outer Ring with Laser Precision Marks & Subtle Glass Rim */
+  .reactor-outer-ring {
+    position: absolute;
+    width: 258px;
+    height: 258px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(0, 229, 255, 0.38);
+    box-shadow: 
+      0 0 30px rgba(0, 229, 255, 0.25),
+      inset 0 0 25px rgba(0, 229, 255, 0.12),
+      0 0 60px rgba(0, 229, 255, 0.1);
+    background: radial-gradient(circle, transparent 75%, rgba(0, 229, 255, 0.04) 100%);
+    pointer-events: none;
+  }
+
+  /* Segmented rotating dashed ring with holographic cyber glow */
+  .reactor-dashed-ring {
+    position: absolute;
+    width: 236px;
+    height: 236px;
+    border-radius: 50%;
+    border: 2px dashed rgba(0, 240, 255, 0.65);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.4);
+    animation: rotateReactorCW 22s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes rotateReactorCW {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  /* Counter-rotating dotted ring with cyan/neon cyan duality */
+  .reactor-counter-ring {
+    position: absolute;
+    width: 204px;
+    height: 204px;
+    border-radius: 50%;
+    border: 2px dotted rgba(56, 189, 248, 0.6);
+    box-shadow: 0 0 15px rgba(56, 189, 248, 0.35);
+    animation: rotateReactorCCW 16s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes rotateReactorCCW {
+    0% { transform: rotate(360deg); }
+    100% { transform: rotate(0deg); }
+  }
+
+  /* Holographic 8-Ray Arc Segments */
+  .reactor-arc-segments {
+    position: absolute;
+    width: 178px;
+    height: 178px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 229, 255, 0.25);
+    animation: rotateReactorCW 32s linear infinite;
+    pointer-events: none;
+  }
+  .arc-tick {
+    position: absolute;
+    width: 2px;
+    height: 9px;
+    background: linear-gradient(180deg, #00f0ff, transparent);
+    left: 50%;
+    top: 0;
+    transform-origin: center 89px;
+    box-shadow: 0 0 6px #00f0ff;
+  }
+
+  /* Four cardinal glowing laser beacons at 0, 90, 180, 270 deg */
+  .reactor-accent-dots {
+    position: absolute;
+    width: 184px;
+    height: 184px;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: rotateReactorCCW 28s linear infinite;
+  }
+  .accent-dot {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 0 12px #00f0ff, 0 0 20px #00f0ff;
+  }
+  .accent-dot.d1 { top: 3px; left: 50%; transform: translateX(-50%); }
+  .accent-dot.d2 { bottom: 3px; left: 50%; transform: translateX(-50%); }
+  .accent-dot.d3 { left: 3px; top: 50%; transform: translateY(-50%); }
+  .accent-dot.d4 { right: 3px; top: 50%; transform: translateY(-50%); }
+
+  /* Stark Titanium / Carbon Inner Bezel */
+  .reactor-inner-bezel {
+    position: absolute;
+    width: 146px;
+    height: 146px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(2, 8, 14, 0.95) 0%, rgba(4, 18, 28, 0.98) 75%, rgba(0, 240, 255, 0.3) 100%);
+    border: 1.5px solid rgba(0, 240, 255, 0.6);
+    box-shadow: 
+      inset 0 0 25px rgba(0, 0, 0, 0.95),
+      0 0 25px rgba(0, 229, 255, 0.45),
+      inset 0 0 10px rgba(0, 229, 255, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+  }
+
+  /* Rotating Shutter Iris Aperture inside Bezel */
+  .reactor-iris-ring {
+    position: absolute;
+    width: 122px;
+    height: 122px;
+    border-radius: 50%;
+    border: 1px dashed rgba(0, 229, 255, 0.35);
+    animation: rotateReactorCW 12s linear infinite;
+    pointer-events: none;
+  }
+
+  /* Hyper Radiant Core Sphere */
+  .reactor-core-sphere {
+    position: relative;
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ffffff 0%, #a5f3fc 22%, #00f0ff 48%, #0284c7 75%, #032135 96%);
+    box-shadow: 
+      0 0 45px rgba(0, 240, 255, 0.95),
+      0 0 85px rgba(0, 240, 255, 0.55),
+      0 0 130px rgba(0, 229, 255, 0.25),
+      inset 0 2px 10px rgba(255, 255, 255, 0.95),
+      inset 0 -6px 14px rgba(1, 15, 26, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.45s ease, box-shadow 0.45s ease;
+    overflow: hidden;
+  }
+
+  /* Glowing Quantum Plasma Ripple Overlay inside Core */
+  .reactor-plasma-wave {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, transparent 0deg, rgba(255, 255, 255, 0.45) 90deg, transparent 180deg);
+    animation: plasmaSpin 4s linear infinite;
+    pointer-events: none;
+    mix-blend-mode: overlay;
+  }
+  @keyframes plasmaSpin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  /* ULTRA-PREMIUM HOLOGRAPHIC AI NEURAL CORE EMBLEM */
+  .core-emblem-wrap {
+    position: relative;
+    z-index: 3;
+    width: 78px;
+    height: 78px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.8));
+  }
+  .core-emblem-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .emblem-reticle {
+    animation: emblemReticleSpin 18s linear infinite;
+    transform-origin: 50px 50px;
+  }
+  @keyframes emblemReticleSpin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  .emblem-hex-ring {
+    animation: emblemHexOscillate 24s linear infinite;
+    transform-origin: 50px 50px;
+    filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.7));
+  }
+  @keyframes emblemHexOscillate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(-360deg); }
+  }
+  .emblem-tri-core {
+    animation: emblemTriPulse 6s ease-in-out infinite alternate;
+    transform-origin: 50px 50px;
+  }
+  .emblem-tri-inv {
+    animation: emblemTriPulse 6s ease-in-out infinite alternate-reverse;
+    transform-origin: 50px 50px;
+  }
+  @keyframes emblemTriPulse {
+    0% { transform: scale(0.92) rotate(0deg); opacity: 0.7; }
+    50% { transform: scale(1.05) rotate(180deg); opacity: 1; }
+    100% { transform: scale(0.92) rotate(360deg); opacity: 0.7; }
+  }
+  .emblem-center-diamond {
+    animation: emblemDiamondGlow 2.5s ease-in-out infinite alternate;
+    transform-origin: 50px 50px;
+    filter: drop-shadow(0 0 8px #ffffff);
+  }
+  @keyframes emblemDiamondGlow {
+    0% { transform: scale(0.85); opacity: 0.8; }
+    100% { transform: scale(1.18); opacity: 1; filter: drop-shadow(0 0 14px #00f0ff); }
+  }
+
+  /* Ambient Reactive Breathing / Vibrational Animations */
+  @keyframes reactorBreathe {
+    0%, 100% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.06); filter: brightness(1.18); }
+  }
+  @keyframes reactorListenWave {
+    0%, 100% { transform: scale(1.02); filter: drop-shadow(0 0 60px rgba(239, 68, 68, 0.9)); }
+    50% { transform: scale(1.22); filter: drop-shadow(0 0 95px rgba(239, 68, 68, 1)); }
+  }
+  @keyframes reactorSpeakPulse {
+    0%, 100% { transform: scale(1); }
+    25% { transform: scale(1.16); }
+    55% { transform: scale(0.96); }
+    80% { transform: scale(1.10); }
+  }
+  @keyframes reactorThinkingFlux {
+    0%, 100% { transform: scale(1) rotate(0deg); }
+    50% { transform: scale(1.12) rotate(180deg); }
+  }
+
+  /* States: IDLE, LISTENING, THINKING, SPEAKING */
+  .hud[data-state="idle"] .reactor-core-sphere {
+    animation: reactorBreathe 3.5s ease-in-out infinite;
+  }
+
+  .hud[data-state="listening"] .reactor-core-sphere {
+    animation: reactorListenWave 0.75s ease-in-out infinite;
+    background: radial-gradient(circle at 35% 30%, #ffffff 0%, #fca5a5 22%, #ef4444 50%, #991b1b 80%, #1c0202 96%);
+    box-shadow: 
+      0 0 65px rgba(239, 68, 68, 0.95),
+      0 0 110px rgba(239, 68, 68, 0.6),
+      inset 0 2px 10px rgba(255, 255, 255, 0.95),
+      inset 0 -6px 14px rgba(45, 4, 4, 0.9);
+  }
+  .hud[data-state="listening"] .core-emblem-wrap {
+    filter: drop-shadow(0 0 14px rgba(239, 68, 68, 1));
+  }
+  .hud[data-state="listening"] .reactor-outer-ring {
+    border-color: rgba(239, 68, 68, 0.55);
+    box-shadow: 0 0 35px rgba(239, 68, 68, 0.35);
+  }
+  .hud[data-state="listening"] .reactor-dashed-ring {
+    border-color: rgba(239, 68, 68, 0.7);
+    box-shadow: 0 0 25px rgba(239, 68, 68, 0.5);
+  }
+  .hud[data-state="listening"] .reactor-atmospheric-glow {
+    background: radial-gradient(circle, rgba(239, 68, 68, 0.28) 0%, rgba(185, 28, 28, 0.14) 45%, transparent 72%);
+  }
+
+  .hud[data-state="thinking"] .reactor-core-sphere {
+    animation: reactorBreathe 1.2s ease-in-out infinite;
+    background: radial-gradient(circle at 35% 30%, #ffffff 0%, #e9d5ff 22%, #a855f7 50%, #6b21a8 80%, #19032b 96%);
+    box-shadow: 
+      0 0 65px rgba(168, 85, 247, 0.95),
+      0 0 110px rgba(168, 85, 247, 0.55),
+      inset 0 2px 10px rgba(255, 255, 255, 0.95),
+      inset 0 -6px 14px rgba(25, 3, 43, 0.9);
+  }
+  .hud[data-state="thinking"] .core-emblem-wrap {
+    filter: drop-shadow(0 0 14px rgba(168, 85, 247, 1));
+  }
+  .hud[data-state="thinking"] .reactor-outer-ring {
+    border-color: rgba(168, 85, 247, 0.55);
+    box-shadow: 0 0 35px rgba(168, 85, 247, 0.35);
+  }
+  .hud[data-state="thinking"] .reactor-dashed-ring {
+    border-color: rgba(168, 85, 247, 0.7);
+    box-shadow: 0 0 25px rgba(168, 85, 247, 0.5);
+  }
+  .hud[data-state="thinking"] .reactor-atmospheric-glow {
+    background: radial-gradient(circle, rgba(168, 85, 247, 0.28) 0%, rgba(126, 34, 206, 0.14) 45%, transparent 72%);
+  }
+
+  .hud[data-state="speaking"] .reactor-core-sphere {
+    animation: reactorSpeakPulse 0.58s ease-in-out infinite;
+    background: radial-gradient(circle at 35% 30%, #ffffff 0%, #bae6fd 22%, #00f0ff 48%, #0284c7 78%, #031e33 96%);
+    box-shadow: 
+      0 0 75px rgba(0, 240, 255, 1),
+      0 0 130px rgba(0, 240, 255, 0.65),
+      inset 0 2px 12px rgba(255, 255, 255, 1),
+      inset 0 -6px 16px rgba(1, 18, 32, 0.95);
+  }
+  .hud[data-state="speaking"] .core-emblem-wrap {
+    filter: drop-shadow(0 0 16px rgba(0, 240, 255, 1));
+  }
+  .hud[data-state="speaking"] .reactor-outer-ring {
+    box-shadow: 0 0 45px rgba(0, 240, 255, 0.5), inset 0 0 30px rgba(0, 240, 255, 0.2);
+  }
+  .hud[data-state="speaking"] .reactor-atmospheric-glow {
+    background: radial-gradient(circle, rgba(0, 240, 255, 0.35) 0%, rgba(2, 132, 199, 0.18) 48%, transparent 72%);
+  }
+
+  /* ================= CONVERSATION SECTION ================= */
+  .conversation-section {
+    position: relative;
+    z-index: 20;
+    width: 100%;
+    margin-top: 10px;
+    margin-bottom: 12px;
+  }
+
+  .conv-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding: 0 4px;
+  }
+
+  .conversation-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #94a3b8;
+  }
+  .conversation-label .material-symbols-outlined {
+    font-size: 15px;
+    color: #00e5ff;
+  }
+
+  .btn-clear-chat {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 9999px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: #fca5a5;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .btn-clear-chat:active {
+    transform: scale(0.92);
+    background: rgba(239, 68, 68, 0.25);
+    border-color: #ef4444;
+  }
+  .btn-clear-chat .material-symbols-outlined {
+    font-size: 14px;
+    color: #ef4444;
+  }
+
+  .conversation-card {
+    position: relative;
+    background: rgba(8, 20, 30, 0.85);
+    border: 1px solid rgba(0, 229, 255, 0.2);
+    border-radius: 14px;
+    padding: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+  }
+
+  /* Top-left Glowing Bracket Accent */
+  .conversation-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 24px;
+    height: 24px;
+    border-top: 2.5px solid #00e5ff;
+    border-left: 2.5px solid #00e5ff;
+    border-top-left-radius: 14px;
+    pointer-events: none;
+    box-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+  }
+
+  /* Scrollable Chat Container */
+  .chat-messages-container {
+    max-height: 230px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-right: 4px;
+    scroll-behavior: smooth;
+  }
+  .chat-messages-container::-webkit-scrollbar {
+    width: 4px;
+  }
+  .chat-messages-container::-webkit-scrollbar-thumb {
+    background: rgba(0, 229, 255, 0.3);
+    border-radius: 4px;
+  }
+
+  /* Empty State */
+  .chat-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 12px;
+    color: #64748b;
+    text-align: center;
+    gap: 6px;
+  }
+  .chat-empty-state .material-symbols-outlined {
+    font-size: 28px;
+    color: rgba(0, 229, 255, 0.35);
+  }
+  .chat-empty-state p {
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* Chat Message Bubbles */
+  .chat-msg-item {
+    display: flex;
+    flex-direction: column;
+    max-width: 90%;
+    animation: fadeInMsg 0.25s ease-out forwards;
+  }
+  @keyframes fadeInMsg {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .chat-msg-item.user {
+    align-self: flex-end;
+    align-items: flex-end;
+  }
+  .chat-msg-item.jarvis {
+    align-self: flex-start;
+    align-items: flex-start;
+  }
+
+  .msg-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 3px;
+    padding: 0 4px;
+  }
+  .chat-msg-item.user .msg-meta {
+    color: #67e8f9;
+  }
+  .chat-msg-item.jarvis .msg-meta {
+    color: #94a3b8;
+  }
+  .msg-time {
+    font-size: 10px;
+    color: #64748b;
+    font-weight: 400;
+  }
+
+  .msg-bubble {
+    border-radius: 12px;
+    padding: 9px 13px;
+    font-size: 13.5px;
+    line-height: 1.45;
+    word-break: break-word;
+  }
+  .chat-msg-item.user .msg-bubble {
+    background: linear-gradient(135deg, rgba(6, 44, 62, 0.85), rgba(12, 60, 84, 0.85));
+    border: 1px solid rgba(0, 229, 255, 0.35);
+    border-bottom-right-radius: 2px;
+    color: #ffffff;
+    box-shadow: 0 2px 10px rgba(0, 229, 255, 0.1);
+  }
+  .chat-msg-item.jarvis .msg-bubble {
+    background: linear-gradient(135deg, rgba(8, 22, 34, 0.9), rgba(5, 15, 24, 0.95));
+    border: 1px solid rgba(0, 229, 255, 0.15);
+    border-left: 3px solid #00e5ff;
+    border-bottom-left-radius: 2px;
+    color: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  /* ================= BOTTOM ACTION CONTROLS ================= */
+  .app-footer {
+    position: relative;
+    z-index: 30;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .action-dock {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 360px;
+    margin: 0 auto;
+    padding: 0 6px;
+  }
+
+  /* SLEEP Pill Button */
+  .pill-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: 9999px;
+    background: rgba(14, 20, 28, 0.85);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  .pill-action-btn:active {
+    transform: scale(0.93);
+  }
+
+  .pill-sleep {
+    border-color: rgba(244, 63, 94, 0.4);
+    color: #f43f5e;
+    box-shadow: 0 2px 14px rgba(244, 63, 94, 0.15);
+  }
+  .pill-sleep .material-symbols-outlined {
+    font-size: 17px;
+    color: #f43f5e;
+  }
+
+  .pill-sleep.online {
+    border-color: rgba(52, 211, 153, 0.4);
+    color: #34d399;
+    box-shadow: 0 2px 14px rgba(52, 211, 153, 0.15);
+  }
+  .pill-sleep.online .material-symbols-outlined {
+    color: #34d399;
+  }
+
+  /* Large Center Glowing Voice Mic */
+  .center-voice-btn {
+    width: 66px;
+    height: 66px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #7dd3fc 0%, #00e5ff 45%, #0284c7 90%);
+    box-shadow: 0 0 32px rgba(0, 229, 255, 0.7), 0 0 60px rgba(0, 229, 255, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.3s ease, background 0.3s ease;
+  }
+  .center-voice-btn:active {
+    transform: scale(0.9);
+  }
+  .center-voice-btn .material-symbols-outlined {
+    font-size: 32px;
+    color: #031726;
+    font-weight: 700;
+    transition: all 0.2s ease;
+  }
+  .center-voice-btn.muted {
+    background: radial-gradient(circle at 35% 35%, #fca5a5 0%, #ef4444 45%, #991b1b 90%);
+    box-shadow: 0 0 32px rgba(239, 68, 68, 0.75), 0 0 60px rgba(239, 68, 68, 0.4);
+    border-color: rgba(254, 202, 202, 0.6);
+  }
+  .center-voice-btn.muted .material-symbols-outlined {
+    color: #ffffff;
+  }
+
+  /* HISTORY Pill Button */
+  .pill-history {
+    border-color: rgba(0, 229, 255, 0.35);
+    color: #67e8f9;
+    box-shadow: 0 2px 14px rgba(0, 229, 255, 0.12);
+  }
+  .pill-history .material-symbols-outlined {
+    font-size: 17px;
+    color: #67e8f9;
+  }
+
+  /* MUTE / UNMUTE Pill Button */
+  .pill-mute {
+    border-color: rgba(0, 229, 255, 0.35);
+    color: #67e8f9;
+    box-shadow: 0 2px 14px rgba(0, 229, 255, 0.12);
+  }
+  .pill-mute .material-symbols-outlined {
+    font-size: 17px;
+    color: #67e8f9;
+  }
+  .pill-mute.muted {
+    border-color: rgba(245, 158, 11, 0.65);
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.15);
+    box-shadow: 0 0 16px rgba(245, 158, 11, 0.35);
+  }
+  .pill-mute.muted .material-symbols-outlined {
+    color: #f59e0b;
+  }
+
+  /* Quick Action Chips Row */
+  .quick-chips-row {
+    display: none !important;
+  }
+  .quick-chips-row::-webkit-scrollbar { display: none; }
+
+  .chip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    background: rgba(8, 22, 34, 0.7);
+    border: 1px solid rgba(0, 229, 255, 0.25);
+    border-radius: 20px;
+    color: #a5f3fc;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.18s ease;
+  }
+  .chip-btn:active {
+    transform: scale(0.93);
+    background: rgba(0, 229, 255, 0.2);
+    border-color: #00e5ff;
+  }
+  .chip-btn .material-symbols-outlined {
+    font-size: 14px;
+    color: #00e5ff;
+  }
+
+  /* Typed Command Input Bar */
+  .cmd-input-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(6, 18, 28, 0.85);
+    border: 1px solid rgba(0, 229, 255, 0.25);
+    border-radius: 24px;
+    padding: 4px 6px 4px 14px;
+    margin-top: 8px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  }
+  .cmd-input-field {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #f1f5f9;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .cmd-input-field::placeholder {
+    color: #64748b;
+  }
+  .cmd-send-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #00e5ff;
+    border: none;
+    color: #021422;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+  .cmd-send-btn:active {
+    transform: scale(0.88);
+  }
+  .cmd-send-btn .material-symbols-outlined {
+    font-size: 17px;
+    font-weight: 700;
+  }
+
+  /* Screen Tap Ripple */
+  @keyframes screenClickWave {
+    0% { transform: scale(0.2); opacity: 1; }
+    100% { transform: scale(2.6); opacity: 0; }
+  }
+  .click-ripple {
+    position: fixed;
+    width: 48px;
+    height: 48px;
+    margin-left: -24px;
+    margin-top: -24px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0, 229, 255, 0.7) 0%, rgba(0, 229, 255, 0.1) 60%, transparent 100%);
+    border: 2px solid #00e5ff;
+    pointer-events: none;
+    z-index: 9999;
+    animation: screenClickWave 0.5s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+  }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body class="hud" data-state="idle" id="hud-app">
+
+<div class="ambient-center-glow"></div>
+
+<div class="app-container">
+
+  <!-- ============ TOP HEADER ============ -->
+  <header class="app-header">
+    <div class="header-left" onclick="handleMicClick()">
+      <!-- Hexagonal Jarvis Emblem -->
+      <div class="emblem-hex">
+        <svg viewBox="0 0 24 24">
+          <circle cx="6" cy="6" r="2"/>
+          <circle cx="12" cy="6" r="2"/>
+          <circle cx="18" cy="6" r="2"/>
+          <circle cx="6" cy="12" r="2"/>
+          <circle cx="12" cy="12" r="2.5"/>
+          <circle cx="18" cy="12" r="2"/>
+          <circle cx="6" cy="18" r="2"/>
+          <circle cx="12" cy="18" r="2"/>
+          <circle cx="18" cy="18" r="2"/>
+        </svg>
+      </div>
+
+      <div class="header-info">
+        <span class="header-title">Jarvis</span>
+        <div class="header-subtitle">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="brand-status-text">ONLINE</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <!-- Digital Clock & Telemetry Signal Bars -->
+      <div class="clock-telemetry">
+        <span class="live-time-digits" id="live-time-display">00:10</span>
+        <div class="signal-bars">
+          <div class="signal-bar"></div>
+          <div class="signal-bar"></div>
+          <div class="signal-bar"></div>
+          <div class="signal-bar"></div>
+        </div>
+      </div>
+
+      <!-- Hexagonal Settings Button -->
+      <button aria-label="Settings" class="settings-hex-btn" id="settings-trigger-btn" onclick="openSettingsPage()">
+        <span class="material-symbols-outlined" style="font-size: 20px;">tune</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- CREATOR BADGE (Click to open Telegram) -->
+  <div style="display:flex; justify-content:center; margin-bottom:10px; margin-top:-2px;">
+    <a href="https://t.me/+FeBUfQ14loAxZmU1" target="_blank" onclick="openTelegramChannel(); return false;" style="display:inline-flex; align-items:center; gap:7px; padding:6px 16px; border-radius:20px; background:rgba(0, 229, 255, 0.08); border:1px solid rgba(0, 229, 255, 0.35); text-decoration:none; color:#00e5ff; box-shadow:0 0 12px rgba(0, 229, 255, 0.2); cursor:pointer;">
+      <svg style="width:14px; height:14px; fill:#229ED9;" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.75-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/></svg>
+      <span style="font-weight:700; font-size:.74rem; letter-spacing:.05em; font-family:'Plus Jakarta Sans', sans-serif;">CREATED BY AK EXPLOITS</span>
+    </a>
+  </div>
+
+  <!-- ============ SYSTEM PERMISSIONS HUD BANNER ============ -->
+  <section class="permissions-hud-card" id="permissions-hud-card">
+    <div class="perm-hud-top">
+      <div class="perm-hud-left" onclick="togglePermTray()">
+        <span class="material-symbols-outlined perm-shield-icon" id="perm-shield-icon">security</span>
+        <span class="perm-hud-text" id="perm-hud-title">PERMISSIONS: <span class="perm-hud-count" id="perm-count-badge">0/11</span></span>
+      </div>
+
+      <div class="perm-hud-actions">
+        <!-- ALL PERMISSIONS BUTTON (Triggers sequential grant) -->
+        <button class="btn-grant-all" id="btn-grant-all-perms" onclick="grantAllPermissionsSequential()">
+          <span class="material-symbols-outlined" style="font-size: 14px;">verified_user</span>
+          <span>ALL PERMISSIONS</span>
+        </button>
+
+        <button class="btn-expand-perm" id="btn-expand-perm" onclick="togglePermTray()" aria-label="Expand Permissions">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Detailed List of all 11 Permissions -->
+    <div class="perm-details-tray collapsed" id="perm-details-tray">
+      <!-- 1. Microphone -->
+      <div class="perm-mini-row">
+        <span class="perm-mini-title"><span class="material-symbols-outlined">mic</span> Microphone (Voice Command)</span>
+        <button class="perm-mini-btn" id="hudPermMic" onclick="grantSpecificPerm('mic')">ALLOW</button>
+      </div>
+
+      <!-- 2. Camera -->
+      <div class="perm-mini-row">
+        <span class="perm-mini-title"><span class="material-symbols-outlined">photo_camera</span> Camera (Vision AI)</span>
+        <button class="perm-mini-btn" id="hudPermCamera" onclick="grantSpecificPerm('camera')">ALLOW</button>
+      </div>
+
+      <!-- 3. Notifications -->
+      <div class="perm-mini-row">
+        <span class="perm-mini-title"><span class="material-symbols-outlined">notifications</span> Notifications (Reminders)</span>
+        <button class="perm-mini-btn" id="hudPermNotification" onclick="grantSpecificPerm('notifications')">ALLOW</button>
+      </div>
+
+      <!-- 4. Contacts -->
+      <div class="perm-mini-row">
+        <span class="perm-mini-title"><span class="material-symbols-outlined">contacts</span> Contacts (Calling &amp; Chat)</span>
+        <button class="perm-mini-btn" id="hudPermContacts" onclick="grantSpecificPerm('contacts')">ALLOW</button>
+      </div>
+
+      <!-- 5. Phone Calls -->
+      <div class="perm-mini-row">
+        <span class="perm-mini-title"><span class="material-symbols-outlined">call</span> Direct Phone Calls</span>
+        <button class="perm-mini-btn" id="hudPermPhone" onclick="grantSpecificPerm('phone')">ALLOW</button>
+      </div>
+
+      <!-- 6. Location -->
+      <div class="perm-mini-row">
+        <span class="perm-mini-title"><span class="material-symbols-outlined">location_on</span> Location (Weather &amp; Maps)</span>
+        <button class="perm-mini-btn" id="hudPermLocation" onclick="grantSpecificPerm('location')">ALLOW</button>
+      </div>
+
+      <!-- 7. Bluetooth -->
+      <div class="perm-mini-row">
+        <span class="perm-mini-title"><span class="material-symbols-outlined">bluetooth</span> Bluetooth Headsets</span>
+        <button class="perm-mini-btn" id="hudPermBluetooth" onclick="grantSpecificPerm('bluetooth')">ALLOW</button>
+      </div>
+
+      <!-- 8. Battery Optimization -->
+      <div class="perm-mini-row">
+        <span class="perm-mini-title"><span class="material-symbols-outlined">battery_saver</span> Unrestricted Battery</span>
+        <button class="perm-mini-btn" id="hudPermBattery" onclick="grantSpecificPerm('battery')">ALLOW</button>
+      </div>
+
+      <!-- 9. Floating Overlay -->
+      <div class="perm-mini-row">
+        <span class="perm-mini-title"><span class="material-symbols-outlined">picture_in_picture</span> Display Over Other Apps</span>
+        <button class="perm-mini-btn" id="hudPermOverlay" onclick="grantSpecificPerm('overlay')">ALLOW</button>
+      </div>
+
+      <!-- 10. Screen Control (Accessibility) -->
+      <div class="perm-mini-row">
+        <span class="perm-mini-title"><span class="material-symbols-outlined">touch_app</span> Screen Control (100% Voice Click)</span>
+        <button class="perm-mini-btn" id="hudPermAccessibility" onclick="grantSpecificPerm('accessibility')">ENABLE</button>
+      </div>
+
+      <!-- 11. System Settings -->
+      <div class="perm-mini-row">
+        <span class="perm-mini-title"><span class="material-symbols-outlined">settings_brightness</span> Modify System Settings</span>
+        <button class="perm-mini-btn" id="hudPermSettings" onclick="grantSpecificPerm('settings')">ALLOW</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CENTER STAGE: HOLOGRAPHIC HUD ARC REACTOR ============ -->
+  <main class="center-stage">
+    
+    <div class="reactor-hud-container" id="reactor-core-container" onclick="handleMicClick()">
+      <!-- Deep Atmospheric Ambient Glow -->
+      <div class="reactor-atmospheric-glow"></div>
+
+      <!-- Holographic Quantum Rotating Vector Ring -->
+      <svg class="reactor-quantum-svg" viewBox="0 0 300 300">
+        <circle cx="150" cy="150" r="134" fill="none" stroke="rgba(0, 240, 255, 0.18)" stroke-width="1.5" stroke-dasharray="4 8 16 8"/>
+        <circle cx="150" cy="150" r="140" fill="none" stroke="rgba(0, 240, 255, 0.12)" stroke-width="1" stroke-dasharray="2 18"/>
+        <!-- 4 Cardinal Target Crosshairs -->
+        <line x1="150" y1="2" x2="150" y2="16" stroke="#00f0ff" stroke-width="2"/>
+        <line x1="150" y1="284" x2="150" y2="298" stroke="#00f0ff" stroke-width="2"/>
+        <line x1="2" y1="150" x2="16" y2="150" stroke="#00f0ff" stroke-width="2"/>
+        <line x1="284" y1="150" x2="298" y2="150" stroke="#00f0ff" stroke-width="2"/>
+      </svg>
+
+      <!-- Outermost precision ring with tick marks -->
+      <div class="reactor-outer-ring"></div>
+
+      <!-- Segmented dashed ring rotating clockwise -->
+      <div class="reactor-dashed-ring"></div>
+
+      <!-- Counter-rotating dotted ring -->
+      <div class="reactor-counter-ring"></div>
+
+      <!-- 8-Ray Arc Segments -->
+      <div class="reactor-arc-segments">
+        <div class="arc-tick" style="transform: rotate(0deg) translateX(-50%);"></div>
+        <div class="arc-tick" style="transform: rotate(45deg) translateX(-50%);"></div>
+        <div class="arc-tick" style="transform: rotate(90deg) translateX(-50%);"></div>
+        <div class="arc-tick" style="transform: rotate(135deg) translateX(-50%);"></div>
+        <div class="arc-tick" style="transform: rotate(180deg) translateX(-50%);"></div>
+        <div class="arc-tick" style="transform: rotate(225deg) translateX(-50%);"></div>
+        <div class="arc-tick" style="transform: rotate(270deg) translateX(-50%);"></div>
+        <div class="arc-tick" style="transform: rotate(315deg) translateX(-50%);"></div>
+      </div>
+
+      <!-- 4 Glowing cardinal accent laser dots -->
+      <div class="reactor-accent-dots">
+        <div class="accent-dot d1"></div>
+        <div class="accent-dot d2"></div>
+        <div class="accent-dot d3"></div>
+        <div class="accent-dot d4"></div>
+      </div>
+
+      <!-- Dark Inner Bezel Ring with Iris Aperture -->
+      <div class="reactor-inner-bezel">
+        <div class="reactor-iris-ring"></div>
+        <!-- Hyper-Radiant Glowing Core with Rotating Plasma Wave & Ultra-Premium Holographic Core Emblem -->
+        <div class="reactor-core-sphere" id="reactor-sphere">
+          <div class="reactor-plasma-wave"></div>
+          
+          <!-- ULTRA-PREMIUM HOLOGRAPHIC AI NEURAL CORE EMBLEM -->
+          <div class="core-emblem-wrap">
+            <svg class="core-emblem-svg" viewBox="0 0 100 100">
+              <defs>
+                <linearGradient id="emblemGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#ffffff"/>
+                  <stop offset="50%" stop-color="#00f0ff"/>
+                  <stop offset="100%" stop-color="#0284c7"/>
+                </linearGradient>
+                <radialGradient id="crystalGlow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+                  <stop offset="45%" stop-color="#00f0ff" stop-opacity="0.6"/>
+                  <stop offset="100%" stop-color="transparent"/>
+                </radialGradient>
+              </defs>
+
+              <!-- Outer Orbiting Cyber Reticle -->
+              <circle class="emblem-reticle" cx="50" cy="50" r="38" fill="none" stroke="rgba(0, 240, 255, 0.45)" stroke-width="1" stroke-dasharray="3 6"/>
+              
+              <!-- Gyroscopic Counter-Rotating Hexagon Ring -->
+              <polygon class="emblem-hex-ring" points="50,16 79,33 79,67 50,84 21,67 21,33" fill="none" stroke="url(#emblemGrad)" stroke-width="1.6"/>
+              
+              <!-- Inner Inverted Sacred Triangle / Quantum Prism -->
+              <polygon class="emblem-tri-core" points="50,26 71,68 29,68" fill="none" stroke="rgba(255, 255, 255, 0.85)" stroke-width="1.4"/>
+              <polygon class="emblem-tri-inv" points="50,74 29,32 71,32" fill="none" stroke="rgba(0, 240, 255, 0.55)" stroke-width="1"/>
+
+              <!-- Central Diamond Fusion Singularity -->
+              <circle cx="50" cy="50" r="10" fill="url(#crystalGlow)"/>
+              <polygon class="emblem-center-diamond" points="50,42 58,50 50,58 42,50" fill="#ffffff"/>
+              <circle class="emblem-sparkle" cx="50" cy="50" r="2.5" fill="#021c30"/>
+
+              <!-- 4 Micro Laser Targeting Crosshairs -->
+              <line x1="50" y1="12" x2="50" y2="20" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="50" y1="80" x2="50" y2="88" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="12" y1="50" x2="20" y2="50" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="80" y1="50" x2="88" y2="50" stroke="#00f0ff" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ============ QUICK ACTIONS CHIPS & COMMAND BAR ============ -->
+  <div class="quick-chips-row">
+    <button class="chip-btn" onclick="sendInstantCommand('Mute mic')"><span class="material-symbols-outlined">mic_off</span>Mute</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Unmute mic')"><span class="material-symbols-outlined">mic</span>Unmute</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Torch on')"><span class="material-symbols-outlined">flashlight_on</span>Torch</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Play song on YouTube')"><span class="material-symbols-outlined">smart_display</span>YouTube</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Open Camera')"><span class="material-symbols-outlined">photo_camera</span>Camera</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Volume 100%')"><span class="material-symbols-outlined">volume_up</span>Volume</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Battery status')"><span class="material-symbols-outlined">battery_std</span>Battery</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Time kya hai')"><span class="material-symbols-outlined">schedule</span>Time</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Open WhatsApp')"><span class="material-symbols-outlined">chat</span>WhatsApp</button>
+    <button class="chip-btn" onclick="sendInstantCommand('Open Settings')"><span class="material-symbols-outlined">settings</span>Settings</button>
+  </div>
+
+  <div class="cmd-input-container">
+    <input type="text" id="cmd-input-field" class="cmd-input-field" placeholder="Ask Jarvis..." onkeydown="if(event.key==='Enter') submitTypedCommand()"/>
+    <button class="cmd-send-btn" onclick="submitTypedCommand()" aria-label="Send Command">
+      <span class="material-symbols-outlined">send</span>
+    </button>
+  </div>
+
+  <!-- ============ CONVERSATION SECTION ============ -->
+  <section class="conversation-section">
+    <div class="conv-top-bar">
+      <div class="conversation-label">
+        <span class="material-symbols-outlined">forum</span>
+        <span>LOG</span>
+      </div>
+      <button class="btn-clear-chat" onclick="clearConversation()" aria-label="Clear Chat">
+        <span class="material-symbols-outlined">delete_sweep</span>
+        <span>CLEAR</span>
+      </button>
+    </div>
+    
+    <div class="conversation-card">
+      <div class="chat-messages-container" id="chat-messages-container">
+        <!-- Initial welcome conversation message -->
+        <div class="chat-msg-item jarvis">
+          <div class="msg-meta">
+            <span>Jarvis</span> · <span class="msg-time" id="initial-msg-time">ONLINE</span>
+          </div>
+          <div class="msg-bubble">
+            Online. Systems nominal.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ BOTTOM ACTION BAR ============ -->
+  <footer class="app-footer">
+    <div class="action-dock">
+
+      <!-- SLEEP Button -->
+      <button class="pill-action-btn pill-sleep" id="btn-sleep-toggle" onclick="toggleSleepMode()" aria-label="Sleep">
+        <span class="material-symbols-outlined" id="sleep-icon">power_settings_new</span>
+        <span id="sleep-label">SLEEP</span>
+      </button>
+
+      <!-- Center Iconic Voice & Mute Mic (Tap to Mute/Unmute) -->
+      <button class="center-voice-btn" id="center-mic-btn" onclick="handleMicClick()" aria-label="Microphone - Tap to Mute or Unmute">
+        <span class="material-symbols-outlined" id="center-mic-icon">mic</span>
+      </button>
+
+      <!-- HISTORY Button -->
+      <button class="pill-action-btn pill-history" id="btn-history-toggle" onclick="openHistoryDirect()" aria-label="History">
+        <span class="material-symbols-outlined">history</span>
+        <span>HISTORY</span>
+      </button>
+
+    </div>
+  </footer>
+
+</div>
+
+<!-- Hidden chat buffer for Android bridge sync -->
+<div id="chat-log" class="hidden"></div>
+
+<script>
+(function() {
+  'use strict';
+
+  const hud = document.getElementById('hud-app') || document.body;
+  const reactorSphere = document.getElementById('reactor-sphere');
+  const statusDot = document.getElementById('status-dot');
+  const brandStatusText = document.getElementById('brand-status-text');
+  const liveTimeDisplay = document.getElementById('live-time-display');
+  const convSender = document.getElementById('conv-sender');
+  const convTime = document.getElementById('conv-time');
+  const convBodyText = document.getElementById('conv-body-text');
+  const centerMicIcon = document.getElementById('center-mic-icon');
+  const btnSleepToggle = document.getElementById('btn-sleep-toggle');
+  const sleepIcon = document.getElementById('sleep-icon');
+  const sleepLabel = document.getElementById('sleep-label');
+  const permissionsHudCard = document.getElementById('permissions-hud-card');
+  const permCountBadge = document.getElementById('perm-count-badge');
+  const permDetailsTray = document.getElementById('perm-details-tray');
+  const btnExpandPerm = document.getElementById('btn-expand-perm');
+  const chatLog = document.getElementById('chat-log');
+
+  let currentState = 'idle';
+  let isSleeping = false;
+  let cachedPermissions = {};
+
+  // Formats current time (e.g. 12:10 AM)
+  function formatCurrentTime() {
+    const d = new Date();
+    let hours = d.getHours();
+    const mins = d.getMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    return `${hours}:${mins} ${ampm}`;
+  }
+
+  // Update digital clock (00:10 or 12:10)
+  function updateLiveClock() {
+    const d = new Date();
+    const hours = d.getHours().toString().padStart(2, '0');
+    const mins = d.getMinutes().toString().padStart(2, '0');
+    if (liveTimeDisplay) {
+      liveTimeDisplay.textContent = `${hours}:${mins}`;
+    }
+  }
+  setInterval(updateLiveClock, 10000);
+  updateLiveClock();
+
+  // Set initial conv time
+  if (convTime) {
+    convTime.textContent = formatCurrentTime();
+  }
+
+  // State Handler (idle, listening, thinking, speaking)
+  function setState(state) {
+    currentState = (state || 'idle').toLowerCase();
+    hud.dataset.state = currentState;
+
+    if (currentState === 'idle') {
+      if (brandStatusText) {
+        if (isSleeping) {
+          brandStatusText.textContent = 'STANDBY';
+        } else if (isMicMuted) {
+          brandStatusText.textContent = 'MUTED';
+        } else {
+          brandStatusText.textContent = 'ONLINE';
+        }
+      }
+      if (statusDot) {
+        statusDot.style.background = isSleeping ? '#64748b' : (isMicMuted ? '#ef4444' : '#00e5ff');
+        statusDot.style.boxShadow = isSleeping ? 'none' : (isMicMuted ? '0 0 8px #ef4444' : '0 0 8px #00e5ff');
+      }
+      if (centerMicIcon) centerMicIcon.textContent = isMicMuted ? 'mic_off' : 'mic';
+      const centerBtn = document.getElementById('center-mic-btn');
+      if (centerBtn) {
+        if (isMicMuted) centerBtn.classList.add('muted');
+        else centerBtn.classList.remove('muted');
+      }
+    } else if (currentState === 'listening') {
+      if (brandStatusText) brandStatusText.textContent = 'LISTENING';
+      if (statusDot) {
+        statusDot.style.background = '#ef4444';
+        statusDot.style.boxShadow = '0 0 10px #ef4444';
+      }
+      if (centerMicIcon) centerMicIcon.textContent = 'graphic_eq';
+    } else if (currentState === 'thinking') {
+      if (brandStatusText) brandStatusText.textContent = 'PROCESSING';
+      if (statusDot) {
+        statusDot.style.background = '#a855f7';
+        statusDot.style.boxShadow = '0 0 10px #a855f7';
+      }
+      if (centerMicIcon) centerMicIcon.textContent = 'psychology';
+    } else if (currentState === 'speaking') {
+      if (brandStatusText) brandStatusText.textContent = 'SPEAKING';
+      if (statusDot) {
+        statusDot.style.background = '#38bdf8';
+        statusDot.style.boxShadow = '0 0 10px #38bdf8';
+      }
+      if (centerMicIcon) centerMicIcon.textContent = 'volume_up';
+    }
+  }
+
+  // Windows JS Bridges called from Android
+  window.setOrbState = function(state, level) {
+    setState(state);
+    if (typeof level === 'number') {
+      window.setAudioLevel(level);
+    }
+  };
+
+  window.setAudioLevel = function(level) {
+    if (!reactorSphere) return;
+    const l = Math.min(Math.max(level || 0, 0), 1);
+    const scale = 1 + l * 0.22;
+    if (currentState === 'listening' || currentState === 'speaking') {
+      reactorSphere.style.transform = `scale(${scale.toFixed(3)})`;
+    } else {
+      reactorSphere.style.transform = '';
+    }
+  };
+
+  const chatContainer = document.getElementById('chat-messages-container');
+  const initialMsgTime = document.getElementById('initial-msg-time');
+  if (initialMsgTime) {
+    initialMsgTime.textContent = formatCurrentTime();
+  }
+
+  function appendChatMessage(who, text, timeStr) {
+    if (!chatContainer || !text) return;
+
+    // Remove empty placeholder if any
+    const emptyState = document.getElementById('chat-empty-state');
+    if (emptyState) emptyState.remove();
+
+    const isUser = (who === 'you' || who === 'user');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `chat-msg-item ${isUser ? 'user' : 'jarvis'}`;
+
+    const metaDiv = document.createElement('div');
+    metaDiv.className = 'msg-meta';
+    metaDiv.innerHTML = `<span>${isUser ? 'You' : 'Jarvis'}</span> · <span class="msg-time">${timeStr || formatCurrentTime()}</span>`;
+
+    const bubbleDiv = document.createElement('div');
+    bubbleDiv.className = 'msg-bubble';
+    bubbleDiv.textContent = text;
+
+    msgDiv.appendChild(metaDiv);
+    msgDiv.appendChild(bubbleDiv);
+    chatContainer.appendChild(msgDiv);
+
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  window.addChatMessage = function(who, text, timeStr) {
+    appendChatMessage(who, text, timeStr);
+
+    if (chatLog) {
+      const p = document.createElement('p');
+      p.textContent = ((who === 'you' || who === 'user') ? 'You: ' : 'Jarvis: ') + text;
+      chatLog.appendChild(p);
+    }
+  };
+
+  window.loadFullChatHistory = function(itemsJson) {
+    if (!chatContainer) return;
+    try {
+      const items = (typeof itemsJson === 'string') ? JSON.parse(itemsJson) : itemsJson;
+      if (!Array.isArray(items) || items.length === 0) return;
+
+      chatContainer.innerHTML = '';
+      items.forEach(item => {
+        appendChatMessage(item.who, item.text, item.time);
+      });
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  window.clearConversation = function() {
+    if (window.JarvisBridge && window.JarvisBridge.clearChat) {
+      window.JarvisBridge.clearChat();
+    } else {
+      window.onChatCleared();
+    }
+  };
+
+  window.onChatCleared = function() {
+    if (!chatContainer) return;
+    chatContainer.innerHTML = `
+      <div class="chat-empty-state" id="chat-empty-state">
+        <span class="material-symbols-outlined">delete_sweep</span>
+        <p>Cleared</p>
+      </div>
+    `;
+    if (brandStatusText) {
+      brandStatusText.textContent = 'ONLINE';
+    }
+  };
+
+  window.syncChatTurns = function(turnsJson) {
+    window.loadFullChatHistory(turnsJson);
+  };
+
+  window.setPowerState = function(isOnline) {
+    isSleeping = !isOnline;
+    if (btnSleepToggle && sleepIcon && sleepLabel) {
+      if (isOnline) {
+        btnSleepToggle.classList.remove('online');
+        sleepIcon.textContent = 'power_settings_new';
+        sleepLabel.textContent = 'SLEEP';
+      } else {
+        btnSleepToggle.classList.add('online');
+        sleepIcon.textContent = 'play_circle';
+        sleepLabel.textContent = 'ONLINE';
+      }
+    }
+    setState(currentState);
+  };
+
+  let isMicMuted = false;
+
+  window.setMicMuted = function(isMuted) {
+    isMicMuted = Boolean(isMuted);
+    const centerBtn = document.getElementById('center-mic-btn');
+    const centerIcon = document.getElementById('center-mic-icon');
+    if (centerBtn && centerIcon) {
+      if (isMicMuted) {
+        centerBtn.classList.add('muted');
+        centerIcon.textContent = 'mic_off';
+        centerBtn.setAttribute('aria-label', 'Microphone Muted - Tap to Unmute');
+        if (brandStatusText) brandStatusText.textContent = 'MUTED';
+      } else {
+        centerBtn.classList.remove('muted');
+        centerIcon.textContent = 'mic';
+        centerBtn.setAttribute('aria-label', 'Microphone Active - Tap to Mute');
+        if (brandStatusText) brandStatusText.textContent = 'ONLINE';
+      }
+    }
+    if (isMicMuted) setState('idle');
+  };
+
+  window.toggleMuteMode = function() {
+    window.handleMicClick();
+  };
+
+  window.setPartialTranscript = function(text) {
+    if (!text) return;
+    if (brandStatusText) brandStatusText.textContent = `"${text}"`;
+    setState('listening');
+  };
+
+  window.onSpeechError = function(errMsg) {
+    if (brandStatusText) brandStatusText.textContent = errMsg || 'ONLINE';
+    setState('idle');
+  };
+
+  window.sendInstantCommand = function(text) {
+    if (!text || !text.trim()) return;
+    const cmd = text.trim();
+    setState('thinking');
+    if (window.JarvisBridge && window.JarvisBridge.sendCommand) {
+      window.JarvisBridge.sendCommand(cmd);
+    } else if (window.JarvisBridge && window.JarvisBridge.openApp) {
+      window.JarvisBridge.openApp(cmd);
+    }
+  };
+
+  window.submitTypedCommand = function() {
+    const inputEl = document.getElementById('cmd-input-field');
+    if (!inputEl) return;
+    const val = inputEl.value.trim();
+    if (val.length > 0) {
+      inputEl.value = '';
+      window.sendInstantCommand(val);
+    }
+  };
+
+  window.setConnectionStatus = function(status) {};
+  window.setLiveTime = function(timeStr) {
+    if (liveTimeDisplay && timeStr) liveTimeDisplay.textContent = timeStr;
+  };
+  window.setScreenControlStatus = function(isActive) {};
+  window.setCurrentVoice = function(voice) {};
+  window.setAppsDetectedCount = function(count) {};
+  window.setAutonomousThought = function(thought) {
+    if (thought) {
+      window.addChatMessage('jarvis', thought, formatCurrentTime());
+    }
+  };
+
+  // ================= PERMISSION HANDLERS =================
+  window.updatePermissions = function(perms) {
+    if (typeof perms === 'string') {
+      try { perms = JSON.parse(perms); } catch(e){}
+    }
+    if (!perms) return;
+    cachedPermissions = perms;
+
+    const total = 11;
+    const badgeMap = {
+      hudPermMic: perms.mic,
+      hudPermCamera: perms.camera,
+      hudPermNotification: perms.notification,
+      hudPermContacts: perms.contacts,
+      hudPermPhone: perms.phone,
+      hudPermLocation: perms.location,
+      hudPermBluetooth: perms.bluetooth,
+      hudPermBattery: perms.battery,
+      hudPermOverlay: perms.overlay,
+      hudPermAccessibility: perms.accessibility,
+      hudPermSettings: perms.settings
+    };
+
+    let grantedCount = 0;
+    Object.keys(badgeMap).forEach(btnId => {
+      const isGranted = Boolean(badgeMap[btnId]);
+      if (isGranted) grantedCount++;
+      const el = document.getElementById(btnId);
+      if (el) {
+        if (isGranted) {
+          el.textContent = 'ALLOWED ✓';
+          el.className = 'perm-mini-btn granted';
+        } else {
+          el.textContent = btnId.includes('Accessibility') ? 'ENABLE' : 'ALLOW';
+          el.className = 'perm-mini-btn';
+        }
+      }
+    });
+
+    if (permCountBadge) {
+      permCountBadge.textContent = `${grantedCount}/${total}`;
+    }
+
+    if (permissionsHudCard) {
+      if (grantedCount === total) {
+        permissionsHudCard.classList.add('all-granted');
+        const titleEl = document.getElementById('perm-hud-title');
+        if (titleEl) titleEl.innerHTML = `ALL PERMISSIONS ACTIVE · <span class="perm-hud-count">100%</span>`;
+        const grantAllBtn = document.getElementById('btn-grant-all-perms');
+        if (grantAllBtn) grantAllBtn.style.display = 'none';
+      } else {
+        permissionsHudCard.classList.remove('all-granted');
+        const titleEl = document.getElementById('perm-hud-title');
+        if (titleEl) titleEl.innerHTML = `PERMISSIONS: <span class="perm-hud-count">${grantedCount}/${total}</span>`;
+        const grantAllBtn = document.getElementById('btn-grant-all-perms');
+        if (grantAllBtn) grantAllBtn.style.display = 'flex';
+      }
+    }
+  };
+
+  window.onPermissionsUpdated = window.updatePermissions;
+
+  // Grant All Permissions Sequential Flow
+  window.grantAllPermissionsSequential = function() {
+    if (window.JarvisBridge && window.JarvisBridge.requestAllPermissions) {
+      window.JarvisBridge.requestAllPermissions();
+    } else {
+      alert("Requesting all system permissions sequentially...");
+    }
+  };
+
+  // Grant Specific Permission
+  window.grantSpecificPerm = function(type) {
+    if (window.JarvisBridge && window.JarvisBridge.requestPermission) {
+      window.JarvisBridge.requestPermission(type);
+    } else {
+      alert("Granting permission: " + type);
+    }
+  };
+
+  // Toggle permissions expandable details tray
+  window.togglePermTray = function() {
+    if (!permDetailsTray) return;
+    const isCollapsed = permDetailsTray.classList.contains('collapsed');
+    if (isCollapsed) {
+      permDetailsTray.classList.remove('collapsed');
+      if (btnExpandPerm) btnExpandPerm.classList.add('open');
+    } else {
+      permDetailsTray.classList.add('collapsed');
+      if (btnExpandPerm) btnExpandPerm.classList.remove('open');
+    }
+  };
+
+  // ================= USER INTERACTION TRIGGERS =================
+  window.handleMicClick = function() {
+    if (window.JarvisBridge && window.JarvisBridge.onMicClicked) {
+      window.JarvisBridge.onMicClicked();
+    } else {
+      if (currentState === 'idle') {
+        setState('listening');
+        setTimeout(() => {
+          setState('thinking');
+          setTimeout(() => {
+            window.addChatMessage('jarvis', 'Systems operational. How may I assist you today, sir?', formatCurrentTime());
+            setState('speaking');
+            setTimeout(() => setState('idle'), 2500);
+          }, 1200);
+        }, 1800);
+      } else {
+        setState('idle');
+      }
+    }
+  };
+
+  window.toggleSleepMode = function() {
+    if (window.JarvisBridge && window.JarvisBridge.onPowerClicked) {
+      window.JarvisBridge.onPowerClicked();
+    } else {
+      window.setPowerState(isSleeping);
+    }
+  };
+
+  window.openSettingsPage = function() {
+    if (window.JarvisBridge && window.JarvisBridge.onSettingsClicked) {
+      window.JarvisBridge.onSettingsClicked();
+    } else {
+      window.location.href = 'settings.html';
+    }
+  };
+
+  window.openHistoryDirect = function() {
+    if (window.JarvisBridge && window.JarvisBridge.onHistoryClicked) {
+      window.JarvisBridge.onHistoryClicked();
+    } else {
+      alert('Conversation History');
+    }
+  };
+
+  window.openTelegramChannel = function() {
+    if (window.JarvisBridge && window.JarvisBridge.openTelegram) {
+      window.JarvisBridge.openTelegram();
+    } else {
+      window.open('https://t.me/+FeBUfQ14loAxZmU1', '_blank');
+    }
+  };
+
+  // Screen Tap Ripple Effect
+  window.spawnClickRipple = function(x, y) {
+    const ripple = document.createElement('div');
+    ripple.className = 'click-ripple';
+    ripple.style.left = x + 'px';
+    ripple.style.top = y + 'px';
+    document.body.appendChild(ripple);
+    setTimeout(() => {
+      if (ripple.parentNode) ripple.parentNode.removeChild(ripple);
+    }, 500);
+  };
+
+  // Initial Check
+  try {
+    if (window.JarvisBridge && window.JarvisBridge.getPermissionsJson) {
+      const initialPerms = window.JarvisBridge.getPermissionsJson();
+      if (initialPerms) {
+        window.updatePermissions(initialPerms);
+      }
+    }
+  } catch(e) {}
+
+  setState('idle');
+})();
+</script>
+</body>
+</html>
