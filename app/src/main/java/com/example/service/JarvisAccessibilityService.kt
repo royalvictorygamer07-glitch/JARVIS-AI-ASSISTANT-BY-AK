@@ -102,81 +102,72 @@ class JarvisAccessibilityService : AccessibilityService() {
     }
 
     private fun findNodeRecursive(node: AccessibilityNodeInfo, targetLower: String): AccessibilityNodeInfo? {
-        val text = node.text?.toString()?.lowercase() ?: ""
-        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
-        val viewId = node.viewIdResourceName?.lowercase() ?: ""
+        val nodeText = node.text?.toString()?.lowercase() ?: ""
+        val contentDesc = node.contentDescription?.toString()?.lowercase() ?: ""
 
-        if (text.contains(targetLower) || desc.contains(targetLower) || (viewId.isNotEmpty() && viewId.contains(targetLower))) {
+        if (nodeText.contains(targetLower) || contentDesc.contains(targetLower)) {
             return node
         }
 
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            val match = findNodeRecursive(child, targetLower)
-            if (match != null) return match
+            val found = findNodeRecursive(child, targetLower)
+            if (found != null) return found
         }
         return null
     }
 
     private fun performClickOnNode(node: AccessibilityNodeInfo): Boolean {
-        // Direct click
-        if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-            return true
+        // If node itself is clickable
+        if (node.isClickable) {
+            val clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (clicked) return true
         }
 
-        // Parent click
+        // Check parent chain if parent is clickable (e.g. Card, Button wrapping TextView)
         var parent = node.parent
-        while (parent != null) {
-            if (parent.isClickable && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                return true
+        var depth = 0
+        while (parent != null && depth < 4) {
+            if (parent.isClickable) {
+                val clicked = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                if (clicked) return true
             }
             parent = parent.parent
+            depth++
         }
 
-        // Gesture click on center bounds
-        val bounds = Rect()
-        node.getBoundsInScreen(bounds)
-        if (!bounds.isEmpty && bounds.width() > 0 && bounds.height() > 0) {
-            return clickAt(bounds.centerX().toFloat(), bounds.centerY().toFloat())
+        // Fallback: Calculate bounds on screen and dispatch gesture click
+        val rect = Rect()
+        node.getBoundsInScreen(rect)
+        if (!rect.isEmpty) {
+            val cx = rect.centerX().toFloat()
+            val cy = rect.centerY().toFloat()
+            return clickAt(cx, cy)
         }
 
         return false
     }
 
     /**
-     * Click screen center
+     * Vertical screen scroll (down = scroll down / swipe up)
      */
-    fun clickCenter(): Boolean {
-        val dm = resources.displayMetrics
-        return clickAt(dm.widthPixels / 2f, dm.heightPixels / 2f)
-    }
-
-    /**
-     * Click relative position: "center", "top", "bottom", "left", "right"
-     */
-    fun clickPosition(position: String): Boolean {
-        val dm = resources.displayMetrics
-        val w = dm.widthPixels.toFloat()
-        val h = dm.heightPixels.toFloat()
-        return when (position.lowercase()) {
-            "top", "upar" -> clickAt(w / 2f, h * 0.25f)
-            "bottom", "niche" -> clickAt(w / 2f, h * 0.75f)
-            "left", "baye" -> clickAt(w * 0.25f, h / 2f)
-            "right", "daye" -> clickAt(w * 0.75f, h / 2f)
-            else -> clickAt(w / 2f, h / 2f)
-        }
-    }
-
-    /**
-     * Scroll up or down
-     */
-    fun scroll(down: Boolean): Boolean {
+    fun scroll(down: Boolean = true): Boolean {
         val root = rootInActiveWindow
         if (root != null) {
-            val action = if (down) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-            if (root.performAction(action)) return true
+            val scrollable = findScrollableNode(root)
+            if (scrollable != null) {
+                val action = if (down) {
+                    AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                } else {
+                    AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+                }
+                if (scrollable.performAction(action)) {
+                    return true
+                }
+            }
         }
 
+        // Fallback to gesture scroll
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             val dm = resources.displayMetrics
             val startX = dm.widthPixels / 2f
@@ -195,6 +186,16 @@ class JarvisAccessibilityService : AccessibilityService() {
             return dispatchGesture(gesture, null, null)
         }
         return false
+    }
+
+    private fun findScrollableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isScrollable) return node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findScrollableNode(child)
+            if (found != null) return found
+        }
+        return null
     }
 
     /**
@@ -245,8 +246,18 @@ class JarvisAccessibilityService : AccessibilityService() {
         }
     }
 
+    fun clickCenter(): Boolean = clickNormalized(0.5f, 0.5f)
+
     fun goBack(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
     fun goHome(): Boolean = performGlobalAction(GLOBAL_ACTION_HOME)
     fun openRecents(): Boolean = performGlobalAction(GLOBAL_ACTION_RECENTS)
     fun openNotifications(): Boolean = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+    fun openQuickSettings(): Boolean = performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+    fun openPowerDialog(): Boolean = performGlobalAction(GLOBAL_ACTION_POWER_DIALOG)
+    fun takeScreenshot(): Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        performGlobalAction(GLOBAL_ACTION_TAKE_SCREENSHOT)
+    } else false
+    fun lockScreen(): Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+    } else false
 }

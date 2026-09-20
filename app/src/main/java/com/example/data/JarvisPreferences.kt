@@ -30,8 +30,12 @@ class JarvisPreferences(context: Context) {
         set(value) = prefs.edit().putString(KEY_PERSONALITY, value).apply()
 
     var userName: String
-        get() = prefs.getString(KEY_USER_NAME, "Sir") ?: "Sir"
+        get() = prefs.getString(KEY_USER_NAME, "User") ?: "User"
         set(value) = prefs.edit().putString(KEY_USER_NAME, value).apply()
+
+    var wakeWord: String
+        get() = prefs.getString(KEY_WAKE_WORD, "Jarvis") ?: "Jarvis"
+        set(value) = prefs.edit().putString(KEY_WAKE_WORD, value).apply()
 
     var youtubeEnabled: Boolean
         get() = prefs.getBoolean(KEY_YOUTUBE_ENABLED, true)
@@ -55,6 +59,7 @@ class JarvisPreferences(context: Context) {
         private const val KEY_VOICE = "voice"
         private const val KEY_PERSONALITY = "personality"
         private const val KEY_USER_NAME = "user_name"
+        private const val KEY_WAKE_WORD = "wake_word"
         private const val KEY_YOUTUBE_ENABLED = "youtube_enabled"
         private const val KEY_YOUTUBE_API_KEY = "youtube_api_key"
         private const val KEY_POWER_ONLINE = "power_online"

@@ -35,9 +35,6 @@ class AppManagerHelper(private val context: Context) {
         scanInstalledApps()
     }
 
-    /**
-     * Scans and indexes 100% of launchable apps installed on the device.
-     */
     fun scanInstalledApps(): List<InstalledAppInfo> {
         val now = System.currentTimeMillis()
         if (cachedApps.isNotEmpty() && (now - lastScanTime < 60_000)) {
@@ -67,7 +64,6 @@ class AppManagerHelper(private val context: Context) {
                 appList.add(InstalledAppInfo(label, pkg, isSystem))
             }
 
-            // Fallback scan: inspect all installed applications in case some don't match CATEGORY_LAUNCHER
             if (appList.isEmpty()) {
                 val allInstalled = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
                 for (appInfo in allInstalled) {
@@ -96,9 +92,6 @@ class AppManagerHelper(private val context: Context) {
         return cachedApps
     }
 
-    /**
-     * Searches for any requested app and launches it immediately.
-     */
     fun findAndLaunchApp(query: String, isHindi: Boolean = true): AppLaunchResult {
         val cleanQuery = cleanAppName(query)
         if (cleanQuery.isBlank()) {
@@ -109,12 +102,10 @@ class AppManagerHelper(private val context: Context) {
             )
         }
 
-        // Special system intents
         handleSpecialSystemIntents(cleanQuery, isHindi)?.let { return it }
 
         val apps = scanInstalledApps()
         if (apps.isEmpty()) {
-            // Attempt direct launch if query looks like a package or standard alias
             val fallbackPackage = getKnownPackageAlias(cleanQuery)
             if (fallbackPackage != null) {
                 return launchPackageDirectly(fallbackPackage, cleanQuery, isHindi)
@@ -127,7 +118,7 @@ class AppManagerHelper(private val context: Context) {
             cleanAppName(it.label).equals(cleanQuery, ignoreCase = true)
         }
 
-        // 2. Check alias mapping (e.g., "yt" -> YouTube, "insta" -> Instagram, "ff" -> Free Fire)
+        // 2. Check alias mapping
         if (matchedApp == null) {
             val alias = getKnownPackageAlias(cleanQuery)
             if (alias != null) {
@@ -142,7 +133,7 @@ class AppManagerHelper(private val context: Context) {
             }
         }
 
-        // 4. Fuzzy similarity match (word overlap)
+        // 4. Fuzzy similarity match
         if (matchedApp == null) {
             val queryWords = cleanQuery.split(" ").filter { it.length > 2 }
             matchedApp = apps.maxByOrNull { app ->
@@ -158,7 +149,7 @@ class AppManagerHelper(private val context: Context) {
             return launchPackageDirectly(matchedApp.packageName, matchedApp.label, isHindi)
         }
 
-        // Also check if accessible screen can click it if screen control is active
+        // Check if accessible screen can click it
         val screenService = JarvisAccessibilityService.instance
         if (screenService != null) {
             val clicked = screenService.clickByText(cleanQuery)
@@ -167,15 +158,14 @@ class AppManagerHelper(private val context: Context) {
                     success = true,
                     appName = cleanQuery,
                     message = if (isHindi) {
-                        "Screen par '${cleanQuery}' ko dhundh kar click kar diya hai, sir!"
+                        "Screen par '${cleanQuery}' par click kar diya hai."
                     } else {
-                        "Found and clicked '${cleanQuery}' on screen, sir!"
+                        "Found and clicked '${cleanQuery}' on screen."
                     }
                 )
             }
         }
 
-        // If not installed on device, open Play Store or search
         return trySearchOnPlayStore(cleanQuery, isHindi)
     }
 
@@ -191,9 +181,9 @@ class AppManagerHelper(private val context: Context) {
                     appName = label,
                     packageName = pkg,
                     message = if (isHindi) {
-                        "Sir, $label app ko dhundh kar open kar diya hai!"
+                        "$label app open kar diya hai."
                     } else {
-                        "Found and launched $label, sir!"
+                        "Launched $label."
                     }
                 )
             } else {
@@ -218,7 +208,7 @@ class AppManagerHelper(private val context: Context) {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(intent)
-                    AppLaunchResult(true, "Camera", null, if (isHindi) "Camera optics open kar diya gaya hai, sir!" else "Camera opened, sir!")
+                    AppLaunchResult(true, "Camera", null, if (isHindi) "Camera open kar diya gaya hai." else "Camera opened.")
                 } catch (e: Exception) { null }
             }
             "setting" in cleanQuery -> {
@@ -227,7 +217,7 @@ class AppManagerHelper(private val context: Context) {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(intent)
-                    AppLaunchResult(true, "Settings", null, if (isHindi) "System Settings open kar di gayi hai, sir." else "Settings opened, sir.")
+                    AppLaunchResult(true, "Settings", null, if (isHindi) "Settings open kar di gayi hai." else "Settings opened.")
                 } catch (e: Exception) { null }
             }
             "dialer" in cleanQuery || "dial pad" in cleanQuery || "call" == cleanQuery || "phone" == cleanQuery -> {
@@ -236,7 +226,7 @@ class AppManagerHelper(private val context: Context) {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(intent)
-                    AppLaunchResult(true, "Phone Dialer", null, if (isHindi) "Phone Dialer open kar diya hai, sir." else "Phone dialer opened, sir.")
+                    AppLaunchResult(true, "Phone Dialer", null, if (isHindi) "Phone dialer open kar diya hai." else "Phone dialer opened.")
                 } catch (e: Exception) { null }
             }
             "play store" in cleanQuery || "playstore" in cleanQuery -> {
@@ -245,7 +235,7 @@ class AppManagerHelper(private val context: Context) {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(intent)
-                    AppLaunchResult(true, "Google Play Store", null, if (isHindi) "Google Play Store open kar diya hai, sir." else "Play Store opened, sir.")
+                    AppLaunchResult(true, "Google Play Store", null, if (isHindi) "Google Play Store open kar diya hai." else "Play Store opened.")
                 } catch (e: Exception) { null }
             }
         }
@@ -262,9 +252,9 @@ class AppManagerHelper(private val context: Context) {
                 success = true,
                 appName = cleanQuery,
                 message = if (isHindi) {
-                    "Sir, '$cleanQuery' aapke phone me install nahi mila, maine isko Play Store par dhundh diya hai!"
+                    "'$cleanQuery' phone me install nahi mila, Play Store par search kar diya hai."
                 } else {
-                    "'$cleanQuery' is not installed. Searching for it on Google Play Store, sir."
+                    "'$cleanQuery' is not installed. Searching for it on Google Play Store."
                 }
             )
         } catch (e: Exception) {
@@ -276,9 +266,9 @@ class AppManagerHelper(private val context: Context) {
                 success = true,
                 appName = cleanQuery,
                 message = if (isHindi) {
-                    "Sir, '$cleanQuery' install nahi hai. Web par dhundh raha hoon."
+                    "'$cleanQuery' install nahi hai. Web par dhundh raha hoon."
                 } else {
-                    "'$cleanQuery' not installed. Searching web, sir."
+                    "'$cleanQuery' not installed. Searching web."
                 }
             )
         }

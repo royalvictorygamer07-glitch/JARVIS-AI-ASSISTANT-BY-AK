@@ -65,7 +65,6 @@ class TtsService(
             engine.setPitch(1.20f)
             engine.setSpeechRate(1.18f)
 
-            // Attempt to select native female TTS voice if available
             try {
                 val availableVoices = engine.voices
                 if (!availableVoices.isNullOrEmpty()) {
@@ -128,21 +127,26 @@ class TtsService(
         s = s.replace(Regex("^[\\s*-•]+", RegexOption.MULTILINE), " ")
         // Remove emojis and symbols
         s = s.replace(Regex("[\\p{So}\\p{Cn}]"), "")
-        // Clean multi-punctuation (ellipses cause multi-second pauses)
+        // Clean multi-punctuation
         s = s.replace(Regex("\\.{2,}"), ".")
         s = s.replace(Regex("-{2,}"), " ")
         s = s.replace(Regex("!{2,}"), "!")
         s = s.replace(Regex("\\?{2,}"), "?")
+
+        // CRITICAL USER DIRECTIVE: Remove filler exclamations and salutations (e.g. 'Sir', 'Ji sir')
+        s = s.replace(Regex("^(sir|ji\\s*sir|hello\\s*sir|yes\\s*sir|arre\\s*sir|boss)[,!.\\s]+", RegexOption.IGNORE_CASE), "")
+        s = s.replace(Regex("[,!.\\s]+(sir|ji\\s*sir)[!.]?$", RegexOption.IGNORE_CASE), "")
+        s = s.replace(Regex("\\b(sir|ji\\s*sir)\\b[,!]?", RegexOption.IGNORE_CASE), "")
+
         // Normalize spaces
         return s.replace(Regex("\\s+"), " ").trim()
     }
 
     private fun isHindiText(text: String): Boolean {
-        // Devanagari Unicode range
         if (text.any { it in '\u0900'..'\u097F' }) return true
         val lower = text.lowercase(Locale.ROOT)
         val hindiMarkers = listOf(
-            "hai", "hoon", "aap", "mera", "meri", "karo", "karein", "sir", "raha",
+            "hai", "hoon", "aap", "mera", "meri", "karo", "karein", "raha",
             "rahi", "kya", "batao", "tum", "kaun", "banaya", "chalu", "band",
             "awaz", "aawaz", "shant", "badhao", "dheemi", "gaya"
         )
@@ -162,7 +166,6 @@ class TtsService(
 
         val engine = tts ?: return
 
-        // Set suitable language dynamically so Hinglish/Hindi isn't halted by US phonetics
         try {
             if (isHindiText(cleaned)) {
                 val hiLocale = Locale("hi", "IN")
@@ -177,7 +180,6 @@ class TtsService(
             }
         } catch (_: Exception) {}
 
-        // Fast & fluid speech speed
         val isGirl = currentProfile.lowercase(Locale.ROOT).let {
             it.contains("girl") || it.contains("female") || it.contains("friday")
         }

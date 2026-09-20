@@ -16,7 +16,6 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.speech.RecognizerIntent
-import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -26,9 +25,6 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.material3.Text
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.bridge.JarvisBridge
@@ -38,7 +34,9 @@ import com.example.data.JarvisPreferences
 import com.example.data.MemoryEntity
 import com.example.service.GeminiService
 import com.example.service.JarvisAccessibilityService
+import com.example.service.JarvisBackgroundService
 import com.example.service.JarvisMindEngine
+import com.example.service.JarvisServiceListener
 import com.example.service.TtsService
 import com.example.service.VoiceRecognitionHelper
 import kotlinx.coroutines.Dispatchers
@@ -64,13 +62,67 @@ class MainActivity : ComponentActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var isRequestingSequentialAll = false
 
+    private val serviceListener = object : JarvisServiceListener {
+        override fun onOrbStateChanged(state: String, level: Float) {
+            runOnUiThread {
+                runJs("window.setOrbState('$state', $level);")
+            }
+        }
+
+        override fun onAudioLevel(level: Float) {
+            runOnUiThread {
+                runJs("window.setAudioLevel($level);")
+            }
+        }
+
+        override fun onUserQuery(query: String, timeStr: String) {
+            runOnUiThread {
+                runJs("window.addChatMessage('you', ${JSONObject.quote(query)}, '$timeStr');")
+            }
+        }
+
+        override fun onJarvisResponse(response: String, timeStr: String) {
+            runOnUiThread {
+                runJs("window.addChatMessage('jarvis', ${JSONObject.quote(response)}, '$timeStr');")
+            }
+        }
+
+        override fun onPartialTranscript(text: String) {
+            runOnUiThread {
+                runJs("if (window.setPartialTranscript) window.setPartialTranscript(${JSONObject.quote(text)});")
+            }
+        }
+
+        override fun onMicMutedChanged(isMuted: Boolean) {
+            runOnUiThread {
+                runJs("window.setMicMuted($isMuted);")
+            }
+        }
+
+        override fun onPowerChanged(isOnline: Boolean) {
+            runOnUiThread {
+                runJs("window.setPowerState($isOnline);")
+            }
+        }
+
+        override fun onSpeechError(message: String) {
+            runOnUiThread {
+                runJs("if (window.onSpeechError) window.onSpeechError(${JSONObject.quote(message)});")
+            }
+        }
+    }
+
     private val requestAudioPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
             Toast.makeText(this, "Microphone enabled", Toast.LENGTH_SHORT).show()
-            if (!prefs.isMicMuted) {
-                voiceHelper.startListening()
+            val service = JarvisBackgroundService.instance
+            if (service != null) {
+                service.setMicMuted(false)
+                service.onMicrophonePermissionGranted()
+            } else {
+                JarvisBackgroundService.startService(this)
             }
         } else {
             Toast.makeText(this, "Microphone permission is required for voice commands", Toast.LENGTH_LONG).show()
@@ -107,28 +159,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun ensureWebViewCacheDirs() {
+    private fun cleanCorruptedCacheDirs() {
         try {
-            val httpCache = java.io.File(cacheDir, "WebView/Default/HTTP Cache")
-            if (!httpCache.exists()) httpCache.mkdirs()
-            val codeCache = java.io.File(httpCache, "Code Cache")
-            if (!codeCache.exists()) codeCache.mkdirs()
-            val jsDir = java.io.File(codeCache, "js")
-            val wasmDir = java.io.File(codeCache, "wasm")
-            if (!jsDir.exists()) jsDir.mkdirs()
-            if (!wasmDir.exists()) wasmDir.mkdirs()
-            val indexFile = java.io.File(httpCache, "index-dir")
-            if (!indexFile.exists()) indexFile.mkdirs()
+            val brokenIndex = java.io.File(cacheDir, "WebView/Default/HTTP Cache/index-dir")
+            if (brokenIndex.exists() && brokenIndex.isDirectory) {
+                brokenIndex.deleteRecursively()
+            }
         } catch (_: Throwable) {}
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
-        ensureWebViewCacheDirs()
+        cleanCorruptedCacheDirs()
         super.onCreate(savedInstanceState)
 
         prefs = JarvisPreferences(this)
         database = AppDatabase.getDatabase(this)
+
+        // Launch Background Execution Foreground Service
+        JarvisBackgroundService.startService(this)
 
         geminiService = GeminiService(
             context = this,
@@ -149,8 +198,10 @@ class MainActivity : ComponentActivity() {
             runOnUiThread {
                 if (isSpeaking) {
                     runJs("window.setOrbState('speaking', 0.7);")
+                    voiceHelper.pauseForSpeech()
                 } else {
                     runJs("window.setOrbState('idle', 0.0);")
+                    voiceHelper.resumeAfterSpeech()
                 }
             }
         }
@@ -203,6 +254,7 @@ class MainActivity : ComponentActivity() {
                 }
             },
             isMutedProvider = { prefs.isMicMuted },
+            isPowerOnlineProvider = { prefs.isPowerOnline },
             onFallbackRequested = {
                 runOnUiThread {
                     launchSpeechFallbackDialog()
@@ -239,7 +291,7 @@ class MainActivity : ComponentActivity() {
                             Toast.makeText(this@MainActivity, "Opening: $urlStr", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    return super.shouldOverrideUrlLoading(view, request)
+                    return false
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
@@ -247,45 +299,34 @@ class MainActivity : ComponentActivity() {
                     currentUrl = url ?: ""
                     onWebPageLoaded(currentUrl)
                 }
-
-                override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
-                    runOnUiThread {
-                        try {
-                            recreate()
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                    return true
-                }
             }
-            setBackgroundColor(0xFF030407.toInt())
         }
 
-        setupJsBridges()
-
+        setupBridges()
         setContentView(webView)
-
-        loadIndexPage()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (currentUrl.contains("settings.html")) {
                     loadIndexPage()
                 } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
+                    moveTaskToBack(true)
                 }
             }
         })
 
-        startTimeSync()
+        loadIndexPage()
+
+        // Check and prompt microphone permission on launch if missing
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
     }
 
-    private fun setupJsBridges() {
+    private fun setupBridges() {
         webView.addJavascriptInterface(
             JarvisBridge(
-                onOrb = { runOnUiThread { handleMicOrMuteClick() } },
+                onOrb = { runOnUiThread { toggleVoiceInput() } },
                 onMic = { runOnUiThread { handleMicOrMuteClick() } },
                 onPower = { runOnUiThread { togglePower() } },
                 onSettings = { runOnUiThread { loadSettingsPage() } },
@@ -295,7 +336,8 @@ class MainActivity : ComponentActivity() {
                     runOnUiThread {
                         prefs.voice = voiceName
                         ttsService.applyVoiceProfile(voiceName)
-                        runJs("showToast('Voice: $voiceName');")
+                        runJs("if (window.onVoiceProfileChanged) window.onVoiceProfileChanged('$voiceName');")
+                        Toast.makeText(this@MainActivity, "Voice profile set to: $voiceName", Toast.LENGTH_SHORT).show()
                     }
                 },
                 onScreenControlSettings = { runOnUiThread { openScreenControlSettings() } },
@@ -358,13 +400,22 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        val service = JarvisBackgroundService.instance
+        if (service != null) {
+            service.toggleMute()
+            val isMuted = prefs.isMicMuted
+            runJs("window.setMicMuted($isMuted);")
+            Toast.makeText(this, if (isMuted) "Microphone MUTED" else "Microphone UNMUTED (Listening continuously)", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         if (prefs.isMicMuted) {
             prefs.isMicMuted = false
             runJs("window.setMicMuted(false);")
-            Toast.makeText(this, "Microphone UNMUTED", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Microphone UNMUTED (Listening continuously)", Toast.LENGTH_SHORT).show()
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                 ttsService.stop()
-                voiceHelper.startListening()
+                voiceHelper.startContinuousListening()
             } else {
                 requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             }
@@ -479,75 +530,58 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         updateSettingsPermissionsInWeb()
-        if (::mindEngine.isInitialized && prefs.isPowerOnline) {
-            mindEngine.start()
-        }
+        JarvisBackgroundService.instance?.setUiListener(serviceListener)
+        syncRecentChatHistory()
     }
 
     override fun onPause() {
         super.onPause()
-        if (::mindEngine.isInitialized) {
-            mindEngine.stop()
-        }
+        // Do NOT stop JarvisBackgroundService when activity is minimized or paused!
+        JarvisBackgroundService.instance?.setUiListener(null)
     }
 
     private fun toggleVoiceInput() {
-        if (!prefs.isPowerOnline) {
-            Toast.makeText(this, "Jarvis is in Sleep mode. Press Online to activate.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (prefs.isMicMuted) {
-            Toast.makeText(this, "Microphone is MUTED! Tap UNMUTE button to speak.", Toast.LENGTH_SHORT).show()
-            runJs("window.setMicMuted(true);")
-            return
-        }
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            return
-        }
-
-        if (voiceHelper.isCurrentlyListening()) {
-            voiceHelper.stopListening()
-            runJs("window.setOrbState('idle', 0.0);")
-        } else {
-            ttsService.stop()
-            voiceHelper.startListening()
-        }
+        handleMicOrMuteClick()
     }
 
     private fun togglePower() {
+        val service = JarvisBackgroundService.instance
+        if (service != null) {
+            service.togglePower()
+            runJs("window.setPowerState(${prefs.isPowerOnline});")
+            Toast.makeText(this, if (prefs.isPowerOnline) "Jarvis online" else "Jarvis in sleep mode", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         prefs.isPowerOnline = !prefs.isPowerOnline
         runJs("window.setPowerState(${prefs.isPowerOnline});")
         if (!prefs.isPowerOnline) {
-            if (::mindEngine.isInitialized) mindEngine.stop()
             ttsService.stop()
             voiceHelper.stopListening()
             runJs("window.setOrbState('idle', 0.0);")
             Toast.makeText(this, "Jarvis entering standby sleep mode.", Toast.LENGTH_SHORT).show()
         } else {
-            if (::mindEngine.isInitialized) mindEngine.start()
-            Toast.makeText(this, "Jarvis online. Systems nominal.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Jarvis online.", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun handleUserSpeechQuery(query: String) {
         if (query.isBlank()) return
-        if (::mindEngine.isInitialized) mindEngine.onUserInteracted()
-        val timeNow = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+        val service = JarvisBackgroundService.instance
+        if (service != null) {
+            service.processUserQuery(query)
+            return
+        }
 
-        // Immediately update UI with user query and thinking animation
+        val timeNow = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
         runJs("window.addChatMessage('you', ${JSONObject.quote(query)}, '$timeNow');")
         runJs("window.setOrbState('thinking', 0.6);")
 
-        // Persist query and process action immediately
         lifecycleScope.launch(Dispatchers.IO) {
             database.memoryDao().insertMemory(
                 MemoryEntity(category = "CHAT_USER", content = query)
             )
 
-            // High-speed Instant Action Execution via GeminiService
             val response = geminiService.processQuery(query)
 
             database.memoryDao().insertMemory(
@@ -556,11 +590,13 @@ class MainActivity : ComponentActivity() {
 
             withContext(Dispatchers.Main) {
                 runJs("window.addChatMessage('jarvis', ${JSONObject.quote(response)}, '$timeNow');")
-                // If microphone is not muted, speak aloud
                 if (!prefs.isMicMuted && prefs.isPowerOnline) {
                     ttsService.speak(response)
                 } else {
                     runJs("window.setOrbState('idle', 0.0);")
+                    if (!prefs.isMicMuted && prefs.isPowerOnline) {
+                        voiceHelper.resumeAfterSpeech()
+                    }
                 }
             }
         }
@@ -578,157 +614,56 @@ class MainActivity : ComponentActivity() {
 
     private fun syncRecentChatHistory() {
         lifecycleScope.launch(Dispatchers.IO) {
-            val list = database.memoryDao().getRecentMemories(50).reversed()
-            val chatItemsArray = JSONArray()
-            val timeFmt = SimpleDateFormat("h:mm a", Locale.getDefault())
-
-            list.forEach { mem ->
-                if (mem.category == "CHAT_USER" || mem.category == "CHAT_JARVIS") {
-                    val obj = JSONObject().apply {
-                        put("who", if (mem.category == "CHAT_USER") "user" else "jarvis")
-                        put("text", mem.content)
-                        put("time", timeFmt.format(Date(mem.timestamp)))
-                    }
-                    chatItemsArray.put(obj)
-                }
-            }
-
+            val recentMemories = database.memoryDao().getRecentMemories(30)
             withContext(Dispatchers.Main) {
-                runJs("if (window.loadFullChatHistory) window.loadFullChatHistory(${chatItemsArray.toString()});")
+                val jsonArr = JSONArray()
+                recentMemories.reversed().forEach { mem ->
+                    if (mem.category == "CHAT_USER" || mem.category == "CHAT_JARVIS") {
+                        val obj = JSONObject().apply {
+                            put("role", if (mem.category == "CHAT_USER") "you" else "jarvis")
+                            put("text", mem.content)
+                            put("time", SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(mem.timestamp)))
+                        }
+                        jsonArr.put(obj)
+                    }
+                }
+                runJs("if (window.loadHistoricMessages) window.loadHistoricMessages($jsonArr);")
             }
         }
     }
 
-    private fun getInitialSettingsJson(): String {
-        val perms = checkAllPermissions()
-        val obj = JSONObject().apply {
-            put("apiKey", prefs.apiKey.takeIf { it != "MY_GEMINI_API_KEY" } ?: "")
-            put("model", prefs.model)
-            put("voice", prefs.voice)
-            put("personality", prefs.personality)
-            put("userName", prefs.userName)
-            put("youtubeEnabled", prefs.youtubeEnabled)
-            put("youtubeApiKey", prefs.youtubeApiKey)
-            put("permissions", JSONObject().apply {
-                perms.forEach { (k, v) -> put(k, v) }
-            })
-        }
-        return obj.toString()
-    }
-
-    private fun checkAllPermissions(): Map<String, Boolean> {
-        val mic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        val camera = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
-        val contacts = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
-        val phone = ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
-        val location = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val bluetooth = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
-        val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
-        val battery = pm?.isIgnoringBatteryOptimizations(packageName) == true
-        val overlay = Settings.canDrawOverlays(this)
-        val accessibility = JarvisAccessibilityService.isRunning()
-        val settings = Settings.System.canWrite(this)
-
-        return mapOf(
-            "mic" to mic,
-            "camera" to camera,
-            "notification" to notification,
-            "contacts" to contacts,
-            "phone" to phone,
-            "location" to location,
-            "bluetooth" to bluetooth,
-            "battery" to battery,
-            "overlay" to overlay,
-            "accessibility" to accessibility,
-            "settings" to settings
-        )
-    }
-
-    private fun updateSettingsPermissionsInWeb() {
-        val perms = checkAllPermissions()
-        val obj = JSONObject().apply {
-            perms.forEach { (k, v) -> put(k, v) }
-        }
-        val jsonStr = obj.toString()
-        runJs("if (window.updatePermissions) window.updatePermissions($jsonStr);")
-        runJs("if (window.onPermissionsUpdated) window.onPermissionsUpdated($jsonStr);")
-    }
-
-    private fun requestSpecificPermission(type: String) {
-        when (type.lowercase(Locale.ROOT)) {
-            "mic" -> requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            "camera" -> requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.CAMERA))
-            "notifications", "notification" -> {
+    private fun requestSpecificPermission(perm: String) {
+        when (perm) {
+            "record_audio" -> requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            "camera" -> requestAudioPermissionLauncher.launch(Manifest.permission.CAMERA)
+            "phone" -> requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_CONTACTS))
+            "contacts" -> requestAudioPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+            "location" -> requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            "notifications" -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
-                } else {
-                    Toast.makeText(this, "Notifications enabled for this Android version", Toast.LENGTH_SHORT).show()
-                    updateSettingsPermissionsInWeb()
+                    requestAudioPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
             }
-            "contacts" -> requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.READ_CONTACTS))
-            "phone" -> requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.CALL_PHONE))
-            "location" -> requestMultiplePermissionsLauncher.launch(
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-            )
-            "bluetooth" -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    requestMultiplePermissionsLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT))
-                } else {
-                    Toast.makeText(this, "Bluetooth active for this Android version", Toast.LENGTH_SHORT).show()
-                    updateSettingsPermissionsInWeb()
+            "accessibility" -> openScreenControlSettings()
+            "overlay" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                    startActivity(intent)
                 }
             }
             "battery" -> {
-                try {
-                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = Uri.parse("package:$packageName")
-                    }
-                    startActivity(intent)
-                } catch (_: Exception) {
-                    val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                    startActivity(fallback)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+                    try {
+                        startActivity(intent)
+                    } catch (_: Exception) {}
                 }
-            }
-            "overlay" -> {
-                try {
-                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                        data = Uri.parse("package:$packageName")
-                    }
-                    startActivity(intent)
-                    Toast.makeText(this, "Enable 'Display over other apps' for Jarvis", Toast.LENGTH_LONG).show()
-                } catch (_: Exception) {
-                    startActivity(Intent(Settings.ACTION_SETTINGS))
-                }
-            }
-            "settings" -> {
-                try {
-                    val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
-                        data = Uri.parse("package:$packageName")
-                    }
-                    startActivity(intent)
-                } catch (_: Exception) {
-                    Toast.makeText(this, "Unable to open system settings", Toast.LENGTH_SHORT).show()
-                }
-            }
-            "accessibility" -> {
-                openScreenControlSettings()
             }
         }
     }
 
     private fun requestAllPermissions() {
-        val list = mutableListOf(
+        val permissions = mutableListOf(
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.CAMERA,
             Manifest.permission.READ_CONTACTS,
@@ -737,115 +672,140 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            list.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            list.add(Manifest.permission.BLUETOOTH_CONNECT)
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
         isRequestingSequentialAll = true
-        Toast.makeText(this, "Granting permissions: Microphone, Camera, Contacts, Calls, Location...", Toast.LENGTH_SHORT).show()
-        requestMultiplePermissionsLauncher.launch(list.toTypedArray())
+        requestMultiplePermissionsLauncher.launch(permissions.toTypedArray())
     }
 
     private fun checkAndPromptNextSpecialPermission() {
-        val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
-        if (pm?.isIgnoringBatteryOptimizations(packageName) != true) {
-            Toast.makeText(this, "Next step: Please allow Unrestricted Battery for Jarvis", Toast.LENGTH_LONG).show()
-            requestSpecificPermission("battery")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            AlertDialog.Builder(this)
+                .setTitle("Screen Overlay Permission")
+                .setMessage("Allow Jarvis to display on top of other apps for hands-free assistance.")
+                .setPositiveButton("Grant") { _, _ ->
+                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                    startActivity(intent)
+                }
+                .setNegativeButton("Later", null)
+                .show()
             return
         }
-        if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Next step: Enable 'Display over other apps' for Jarvis", Toast.LENGTH_LONG).show()
-            requestSpecificPermission("overlay")
-            return
-        }
+
         if (!JarvisAccessibilityService.isRunning()) {
-            Toast.makeText(this, "Next step: Enable 'Jarvis AI' in Accessibility for 100% Screen Control", Toast.LENGTH_LONG).show()
-            requestSpecificPermission("accessibility")
-            return
+            AlertDialog.Builder(this)
+                .setTitle("Screen Automation Service")
+                .setMessage("Enable 'Jarvis AI' under Accessibility for 100% voice screen clicks.")
+                .setPositiveButton("Open Settings") { _, _ ->
+                    openScreenControlSettings()
+                }
+                .setNegativeButton("Later", null)
+                .show()
         }
-        if (!Settings.System.canWrite(this)) {
-            Toast.makeText(this, "Next step: Allow 'Modify system settings' for brightness control", Toast.LENGTH_LONG).show()
-            requestSpecificPermission("settings")
-            return
-        }
-        Toast.makeText(this, "All permissions granted! Systems 100% operational, sir.", Toast.LENGTH_LONG).show()
     }
 
-    private fun saveSettingsFromJson(json: String) {
-        try {
-            val root = JSONObject(json)
-            if (root.has("apiKey")) prefs.apiKey = root.getString("apiKey")
-            if (root.has("model")) prefs.model = root.getString("model")
-            if (root.has("voice")) {
-                prefs.voice = root.getString("voice")
-                ttsService.applyVoiceProfile(prefs.voice)
-            }
-            if (root.has("personality")) prefs.personality = root.getString("personality")
-            if (root.has("userName")) prefs.userName = root.getString("userName")
-            if (root.has("youtubeEnabled")) prefs.youtubeEnabled = root.getBoolean("youtubeEnabled")
-            if (root.has("youtubeApiKey")) prefs.youtubeApiKey = root.getString("youtubeApiKey")
+    private fun getInitialSettingsJson(): String {
+        val pm = packageManager
+        fun has(perm: String): Boolean = ContextCompat.checkSelfPermission(this, perm) == PackageManager.PERMISSION_GRANTED
 
-            runJs("showToast('Configuration Saved');")
-        } catch (_: Exception) {
-            runJs("showToast('Failed to parse settings');")
+        val isAudio = has(Manifest.permission.RECORD_AUDIO)
+        val isCamera = has(Manifest.permission.CAMERA)
+        val isPhone = has(Manifest.permission.CALL_PHONE)
+        val isContacts = has(Manifest.permission.READ_CONTACTS)
+        val isLocation = has(Manifest.permission.ACCESS_FINE_LOCATION) || has(Manifest.permission.ACCESS_COARSE_LOCATION)
+        val isNotif = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            has(Manifest.permission.POST_NOTIFICATIONS)
+        } else true
+        val isOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
+        val isBattery = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            powerManager?.isIgnoringBatteryOptimizations(packageName) ?: false
+        } else true
+        val isAccessibility = JarvisAccessibilityService.isRunning()
+
+        val json = JSONObject().apply {
+            put("userName", prefs.userName)
+            put("apiKey", prefs.apiKey)
+            put("model", prefs.model)
+            put("personality", prefs.personality)
+            put("youtubeKey", prefs.youtubeApiKey)
+            put("wakeWord", prefs.wakeWord)
+            put("voice", prefs.voice)
+            put("isMicMuted", prefs.isMicMuted)
+            put("isPowerOnline", prefs.isPowerOnline)
+            put("screenControlActive", isAccessibility)
+            put("permAudio", isAudio)
+            put("permCamera", isCamera)
+            put("permPhone", isPhone)
+            put("permContacts", isContacts)
+            put("permLocation", isLocation)
+            put("permNotifications", isNotif)
+            put("permOverlay", isOverlay)
+            put("permBattery", isBattery)
+            put("permAccessibility", isAccessibility)
+        }
+        return json.toString()
+    }
+
+    private fun updateSettingsPermissionsInWeb() {
+        val json = getInitialSettingsJson()
+        runJs("if (window.updatePermissionsState) window.updatePermissionsState($json);")
+    }
+
+    private fun saveSettingsFromJson(jsonStr: String) {
+        try {
+            val json = JSONObject(jsonStr)
+            if (json.has("apiKey")) prefs.apiKey = json.getString("apiKey")
+            if (json.has("model")) prefs.model = json.getString("model")
+            if (json.has("personality")) prefs.personality = json.getString("personality")
+            if (json.has("youtubeKey")) prefs.youtubeApiKey = json.getString("youtubeKey")
+            if (json.has("voice")) {
+                val v = json.getString("voice")
+                prefs.voice = v
+                ttsService.applyVoiceProfile(v)
+            }
+            Toast.makeText(this, "Settings Saved", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error saving settings: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
     private fun pasteKeyFromClipboard(type: String) {
-        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        val clip = cm?.primaryClip
-        if (clip != null && clip.itemCount > 0) {
-            val text = clip.getItemAt(0).text?.toString() ?: ""
-            if (text.isNotBlank()) {
-                if (type == "gemini") {
-                    runJs("setApiKey(${JSONObject.quote(text)});")
+        try {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            val clipData = clipboard?.primaryClip
+            if (clipData != null && clipData.itemCount > 0) {
+                val pasted = clipData.getItemAt(0).text?.toString()?.trim() ?: ""
+                if (pasted.isNotBlank()) {
+                    runJs("if (window.onPastedKey) window.onPastedKey('$type', ${JSONObject.quote(pasted)});")
+                    Toast.makeText(this, "Pasted into $type", Toast.LENGTH_SHORT).show()
                 } else {
-                    runJs("setYouTubeKey(${JSONObject.quote(text)});")
+                    Toast.makeText(this, "Clipboard is empty", Toast.LENGTH_SHORT).show()
                 }
-            } else {
-                runJs("showToast('Clipboard is empty');")
             }
-        } else {
-            runJs("showToast('Clipboard is empty');")
+        } catch (e: Exception) {
+            Toast.makeText(this, "Could not paste from clipboard", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun validateYouTubeKey(key: String) {
-        if (key.length >= 20) {
-            runJs("onYouTubeKeyValidated(true, 'YouTube Data API v3 Active');")
-        } else {
-            runJs("onYouTubeKeyValidated(false, 'Key is too short or malformed');")
-        }
+        Toast.makeText(this, "YouTube Search Ready", Toast.LENGTH_SHORT).show()
     }
 
     private fun showHistoryDialog() {
         lifecycleScope.launch(Dispatchers.IO) {
-            val memories = database.memoryDao().getRecentMemories(30)
-            val text = if (memories.isEmpty()) {
-                "No previous conversation history found."
-            } else {
-                val sdf = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
-                memories.joinToString("\n\n") { mem ->
-                    val sender = if (mem.category.contains("USER")) "User" else "Jarvis"
-                    "[$sender - ${sdf.format(Date(mem.timestamp))}]\n${mem.content}"
-                }
-            }
-
+            val list = database.memoryDao().getRecentMemories(40)
             withContext(Dispatchers.Main) {
+                if (list.isEmpty()) {
+                    Toast.makeText(this@MainActivity, "No saved history yet.", Toast.LENGTH_SHORT).show()
+                    return@withContext
+                }
+                val items = list.map { "${it.category}: ${it.content}" }.toTypedArray()
                 AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Memory & Conversation History")
-                    .setMessage(text)
-                    .setPositiveButton("Close", null)
-                    .setNegativeButton("Clear All") { _, _ ->
-                        lifecycleScope.launch(Dispatchers.IO) {
-                            database.memoryDao().clearAll()
-                            withContext(Dispatchers.Main) {
-                                runJs("window.syncChatTurns([]);")
-                                Toast.makeText(this@MainActivity, "Memories cleared", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }
+                    .setTitle("Memory & History (${list.size})")
+                    .setItems(items, null)
+                    .setPositiveButton("OK", null)
+                    .setNeutralButton("Clear History") { _, _ -> clearMemoriesDialog() }
                     .show()
             }
         }
@@ -853,14 +813,14 @@ class MainActivity : ComponentActivity() {
 
     private fun clearMemoriesDialog() {
         AlertDialog.Builder(this)
-            .setTitle("Clear Memory Core")
-            .setMessage("Are you sure you want to erase all conversation history and short-term routines?")
-            .setPositiveButton("Clear") { _, _ ->
+            .setTitle("Clear All Memory")
+            .setMessage("Are you sure you want to wipe all chat memory and interaction logs?")
+            .setPositiveButton("Clear All") { _, _ ->
                 lifecycleScope.launch(Dispatchers.IO) {
                     database.memoryDao().clearAll()
                     withContext(Dispatchers.Main) {
-                        runJs("window.syncChatTurns([]);")
-                        runJs("showToast('Memory Core Cleared');")
+                        runJs("if (window.onChatCleared) window.onChatCleared();")
+                        Toast.makeText(this@MainActivity, "All memories wiped clean", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -868,29 +828,16 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    private fun startTimeSync() {
-        mainHandler.post(object : Runnable {
-            override fun run() {
-                val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                runJs("window.setLiveTime('$timeStr');")
-                mainHandler.postDelayed(this, 30000)
-            }
-        })
-    }
-
     private fun runJs(code: String) {
-        webView.evaluateJavascript(code, null)
+        runOnUiThread {
+            webView.evaluateJavascript(code, null)
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        JarvisBackgroundService.instance?.setUiListener(null)
         ttsService.shutdown()
         voiceHelper.stopListening()
-        webView.destroy()
     }
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(text = "Hello $name!", modifier = modifier)
 }

@@ -18,7 +18,8 @@ class VoiceRecognitionHelper(
     private val onError: (String) -> Unit,
     private val onListeningStateChanged: (Boolean) -> Unit,
     private val onPartialResult: ((String) -> Unit)? = null,
-    private val isMutedProvider: (() -> Boolean)? = null,
+    private val isMutedProvider: () -> Boolean,
+    private val isPowerOnlineProvider: () -> Boolean = { true },
     private val onFallbackRequested: (() -> Unit)? = null
 ) {
     companion object {
@@ -27,7 +28,17 @@ class VoiceRecognitionHelper(
 
     private var speechRecognizer: SpeechRecognizer? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    private var isContinuousListening = false
     private var isListening = false
+    private var isPausedForTts = false
+    private var isStarting = false
+
+    private val restartRunnable = Runnable {
+        if (isContinuousListening && !isMutedProvider() && isPowerOnlineProvider() && !isPausedForTts) {
+            startListeningInternal()
+        }
+    }
 
     fun isRecognitionAvailable(): Boolean {
         return try {
@@ -37,29 +48,67 @@ class VoiceRecognitionHelper(
         }
     }
 
-    fun startListening() {
-        mainHandler.post {
-            try {
-                if (isMutedProvider?.invoke() == true) {
-                    onError("Microphone is muted. Tap UNMUTE to speak.")
-                    return@post
-                }
+    fun startContinuousListening() {
+        isContinuousListening = true
+        isPausedForTts = false
+        mainHandler.removeCallbacks(restartRunnable)
+        startListeningInternal()
+    }
 
+    fun startListening() {
+        startContinuousListening()
+    }
+
+    fun pauseForSpeech() {
+        isPausedForTts = true
+        mainHandler.removeCallbacks(restartRunnable)
+        stopRecognizerCleanly()
+        onListeningStateChanged(false)
+    }
+
+    fun resumeAfterSpeech() {
+        isPausedForTts = false
+        if (isContinuousListening && !isMutedProvider() && isPowerOnlineProvider()) {
+            scheduleRestart(200L)
+        }
+    }
+
+    private fun scheduleRestart(delayMs: Long) {
+        mainHandler.removeCallbacks(restartRunnable)
+        if (isContinuousListening && !isMutedProvider() && isPowerOnlineProvider() && !isPausedForTts) {
+            mainHandler.postDelayed(restartRunnable, delayMs)
+        }
+    }
+
+    private fun startListeningInternal() {
+        mainHandler.post {
+            if (isMutedProvider() || !isPowerOnlineProvider() || isPausedForTts) {
+                isListening = false
+                onListeningStateChanged(false)
+                return@post
+            }
+
+            if (isStarting) return@post
+            isStarting = true
+
+            try {
                 if (!isRecognitionAvailable()) {
-                    Log.w(TAG, "SpeechRecognizer not directly available, calling fallback dialog")
+                    Log.w(TAG, "SpeechRecognizer not directly available on device")
                     if (onFallbackRequested != null) {
                         onFallbackRequested.invoke()
                     } else {
-                        onError("Speech recognition is not available on this device.")
+                        onError("Speech recognition not available on this device.")
                     }
+                    isStarting = false
                     return@post
                 }
 
-                stopListeningInternal()
+                stopRecognizerCleanly()
 
                 speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
                     setRecognitionListener(object : RecognitionListener {
                         override fun onReadyForSpeech(params: Bundle?) {
+                            isStarting = false
                             isListening = true
                             onListeningStateChanged(true)
                         }
@@ -82,38 +131,60 @@ class VoiceRecognitionHelper(
                         }
 
                         override fun onError(error: Int) {
+                            isStarting = false
                             isListening = false
                             onListeningStateChanged(false)
 
-                            val message = when (error) {
-                                SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
-                                SpeechRecognizer.ERROR_CLIENT -> {
-                                    // Client error often means internal service crashed or needs fallback
-                                    onFallbackRequested?.invoke()
-                                    "Voice recognition client reset"
+                            Log.d(TAG, "SpeechRecognizer error: $error")
+
+                            // In continuous listening mode, recover automatically without turning off mic
+                            when (error) {
+                                SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
+                                SpeechRecognizer.ERROR_NO_MATCH -> {
+                                    // Natural end of silence; seamlessly restart listening
+                                    stopRecognizerCleanly()
+                                    scheduleRestart(150L)
                                 }
-                                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission required"
-                                SpeechRecognizer.ERROR_NETWORK -> "Network issue detected"
-                                SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network connection timeout"
-                                SpeechRecognizer.ERROR_NO_MATCH -> "Listening timed out. Tap mic to speak."
-                                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Recognition service busy"
-                                SpeechRecognizer.ERROR_SERVER -> "Server error"
-                                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected"
-                                else -> "Recognition error ($error)"
+                                SpeechRecognizer.ERROR_AUDIO,
+                                SpeechRecognizer.ERROR_CLIENT,
+                                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
+                                    // Client or audio buffer reset; re-arm cleanly
+                                    stopRecognizerCleanly()
+                                    scheduleRestart(300L)
+                                }
+                                SpeechRecognizer.ERROR_NETWORK,
+                                SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> {
+                                    // Transient network issue; retry after 800ms
+                                    stopRecognizerCleanly()
+                                    scheduleRestart(800L)
+                                }
+                                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
+                                    stopRecognizerCleanly()
+                                    isContinuousListening = false
+                                    onError("Microphone permission required")
+                                }
+                                else -> {
+                                    stopRecognizerCleanly()
+                                    scheduleRestart(400L)
+                                }
                             }
-                            Log.w(TAG, "SpeechRecognizer error: $error -> $message")
-                            onError(message)
                         }
 
                         override fun onResults(results: Bundle?) {
+                            isStarting = false
                             isListening = false
                             onListeningStateChanged(false)
+
                             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                             val text = matches?.firstOrNull()?.trim() ?: ""
+
+                            stopRecognizerCleanly()
+
                             if (text.isNotBlank()) {
                                 onResult(text)
                             } else {
-                                onError("No speech recognized")
+                                // Empty result, keep listening
+                                scheduleRestart(150L)
                             }
                         }
 
@@ -138,25 +209,23 @@ class VoiceRecognitionHelper(
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 750L)
                     putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 500L)
                 }
 
                 speechRecognizer?.startListening(intent)
             } catch (e: Exception) {
+                isStarting = false
                 isListening = false
                 onListeningStateChanged(false)
-                Log.e(TAG, "Exception starting speech recognition: ${e.message}")
-                if (onFallbackRequested != null) {
-                    onFallbackRequested.invoke()
-                } else {
-                    onError("Failed to start speech recognition: ${e.localizedMessage}")
-                }
+                Log.e(TAG, "Exception in speech startListening: ${e.message}")
+                stopRecognizerCleanly()
+                scheduleRestart(500L)
             }
         }
     }
 
-    private fun stopListeningInternal() {
+    private fun stopRecognizerCleanly() {
         try {
             speechRecognizer?.stopListening()
             speechRecognizer?.cancel()
@@ -164,11 +233,14 @@ class VoiceRecognitionHelper(
         } catch (_: Exception) {}
         speechRecognizer = null
         isListening = false
+        isStarting = false
     }
 
     fun stopListening() {
+        isContinuousListening = false
+        mainHandler.removeCallbacks(restartRunnable)
         mainHandler.post {
-            stopListeningInternal()
+            stopRecognizerCleanly()
             onListeningStateChanged(false)
         }
     }
